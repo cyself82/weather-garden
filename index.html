@@ -237,7 +237,7 @@ form.row{gap:8px}
           <button class="chip" type="button" data-cat="pounce" aria-pressed="false">폴짝폴짝</button>
           <button class="chip" type="button" data-cat="shelter" aria-pressed="false">우산 밑으로</button>
           <button class="chip" type="button" data-cat="petal" aria-pressed="false">꽃잎·낙엽 잡기</button>
-          <button class="chip" type="button" data-cat="roll" aria-pressed="false">낙엽에서 뒹굴기</button>
+          <button class="chip" type="button" data-cat="roll" aria-pressed="false">뒹굴기</button>
           <button class="chip" type="button" data-cat="sit" aria-pressed="false">얌전히 앉기</button>
         </div>
       </div>
@@ -569,7 +569,7 @@ function makeCat() {
   g.userData = { kind: 'cat', head, segs, eyes, paws, jumpV: 0, jumpY: 0, h: 1.6, mode: 'sit', timer: 2, weather: 'sunny', nap: 0, cool: 0 };
   return g;
 }
-const cat = makeCat(); cat.position.set(-1.8, 0, 2.3); cat.rotation.y = .4; world.add(cat);
+window.__garden = {}; const cat = makeCat(); window.__garden.cat = cat; cat.position.set(-1.8, 0, 2.3); cat.rotation.y = .4; world.add(cat);
 
 /* ---------- bunny ---------- */
 function makeBunny() {
@@ -819,13 +819,13 @@ function say(obj) {
   if (kind === 'cat' && obj.userData.mode === 'nap') { set = ['냥? 깨웠어?', '하암... 잘 잤다']; obj.userData.mode = 'sit'; obj.userData.timer = 2.5; }
   else if (kind === 'cat' && obj.userData.mode === 'chase') set = ['나비 잡을 거야!', '거의 다 왔어!'];
   else if (kind === 'cat' && obj.userData.mode === 'petal') set = state.season === 'autumn' ? ['낙엽 잡았다 냥!', '빙글빙글 떨어진다!'] : ['꽃잎 잡을 거야 냥!', '분홍 꽃잎이다!'];
-  else if (kind === 'cat' && obj.userData.mode === 'roll') set = ['낙엽 바스락바스락 냥~', '푹신푹신해!'];
+  else if (kind === 'cat' && obj.userData.mode === 'roll') set = ['발라당~ 편하다 냥', '배 만져 줄래?', '뒹굴뒹굴~'];
   if (obj.userData.tree) set = TREE_LINES[kind][state.season];
   if (kind === 'kid' && Math.random() < .5) set = KID_SEASON[state.season];
   if (obj.userData.tree) { obj.userData.shake = 1; for (let n = 0; n < 16; n++) spawnFall(obj); }
   bubble.textContent = set[Math.floor(Math.random() * set.length)];
   bubbleTarget = obj; bubbleT = 2.6; bubble.classList.add('show');
-  if (obj.userData.jumpV !== undefined && obj.userData.jumpY < .01) obj.userData.jumpV = kind === 'snowman' ? 0 : 4.2;
+  if (obj.userData.jumpV !== undefined && obj.userData.jumpY < .01 && !(obj.userData.lie > .3)) obj.userData.jumpV = kind === 'snowman' ? 0 : 4.2;
   if (kind === 'snowman') obj.userData.wobble = 1;
 }
 
@@ -918,6 +918,16 @@ const zzz = $('#zzz');
 // places the cat should not walk into: pond, house, trees, snowman, kid
 const obstacles = [[4.6, .6, 2.5], [1.4, -5.2, 2.6], [-5.3, -3.3, 1.6], [6.3, -3.4, 1.4], [-6.9, .6, 1.4], [-3.2, -6.3, 1.3], [5.2, 4.9, 1.1], [-4.1, -.9, 1.1], [0, 1.4, 1.0], [-5.7, 5.0, 1.1]];
 const isFree = (x, z) => Math.hypot(x, z) < 6.6 && obstacles.every(([ox, oz, or]) => Math.hypot(x - ox, z - oz) > or);
+function reachable(x, z) {
+  // nearest walkable point to (x, z): pushed out of trees/pond/house and kept on the island
+  const p = new THREE.Vector3(x, 0, z);
+  for (let n = 0; n < 3; n++) obstacles.forEach(([ox, oz, or]) => {
+    const dx = p.x - ox, dz = p.z - oz, d = Math.hypot(dx, dz) || .001;
+    if (d < or + .05) { p.x = ox + dx / d * (or + .1); p.z = oz + dz / d * (or + .1); }
+  });
+  const rr = Math.hypot(p.x, p.z); if (rr > 6.5) { p.x *= 6.5 / rr; p.z *= 6.5 / rr; }
+  return p;
+}
 function freeSpot() {
   for (let n = 0; n < 40; n++) { const a = Math.random() * Math.PI * 2, r = 1.5 + Math.random() * 4.8, x = Math.cos(a) * r, z = Math.sin(a) * r; if (isFree(x, z)) return new THREE.Vector3(x, 0, z); }
   return catDry.clone();
@@ -931,13 +941,13 @@ function catThink() {
   const cu = cat.userData, list = CAT_MODES[state.kind].slice();
   const outside = state.kind === 'sunny' || state.kind === 'cloudy';
   if (outside && (state.season === 'spring' || state.season === 'autumn')) list.push('petal', 'petal');
-  if (outside && state.season === 'autumn') list.push('roll');
+  if (outside) list.push('roll');
   const m = state.catMode !== 'auto' ? state.catMode : list[Math.floor(Math.random() * list.length)];
   cu.mode = m; cu.target = null;
-  cu.timer = { wander: 9, chase: 7, nap: 9 + Math.random() * 5, groom: 3.5, pounce: 6, shelter: 1, petal: 7, roll: 8 }[m] || 2 + Math.random() * 2;
+  cu.timer = { wander: 9, chase: 7, nap: 9 + Math.random() * 5, groom: 3.5, pounce: 7, shelter: 1, petal: 8, roll: 12 }[m] || 2 + Math.random() * 2;
   if (m === 'wander') cu.target = freeSpot();
-  if (m === 'pounce') cu.next = 0;
-  if (m === 'roll') { const mp = seasonTrees[0].position, k = 1.9 / Math.hypot(mp.x, mp.z); cu.target = new THREE.Vector3(mp.x - mp.x * k, 0, mp.z - mp.z * k); }
+  cu.pph = null;
+  if (m === 'roll') cu.target = freeSpot();
 }
 function angLerp(a, b, k) { const d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * k; }
 function lerp(a, b, k) { return a + (b - a) * k; }
@@ -971,7 +981,7 @@ function tick() {
   const windy = 1 + cur.wind * 2 + cur.rain * 2;
   seasonTrees.forEach(tr => {
     const u = tr.userData; if (!u.fallColors[state.season]) return;
-    u.acc += dt * .8 * windy * (1 - cur.snowCover);
+    u.acc += dt * .8 * windy * (1 - cur.snowCover) * (cat.userData.mode === 'petal' ? 2.5 : 1);
     while (u.acc > 1) { u.acc -= 1; spawnFall(tr); }
   });
   falls.forEach(f => {
@@ -1046,7 +1056,7 @@ function tick() {
   cu.timer -= dt; cu.cool -= dt;
   if (cu.weather !== state.kind) { cu.weather = state.kind; catThink(); }
   else if (cu.timer <= 0) catThink();
-  let goal = null, speed = 1.3;
+  let goal = null, speed = 1.3, batting = false;
   if (cu.mode === 'shelter') { goal = catWet; speed = 2.6; cu.timer = 1; }
   else if (cu.mode === 'wander') goal = cu.target;
   else if (cu.mode === 'chase') {
@@ -1056,18 +1066,30 @@ function tick() {
       if (Math.hypot(goal.x - cat.position.x, goal.z - cat.position.z) < 1 && cu.jumpY < .01 && cu.cool <= 0) { cu.jumpV = 4.8; cu.cool = 1.5; }
     } else cu.timer = 0;
   } else if (cu.mode === 'petal') {
+    // trot under a falling petal/leaf, then rear up and bat at it with the front paws (no jumping)
+    // petals fall right under the trees, so stand at the edge of the tree's canopy instead of inside it
     let best = null, bd = 1e9;
-    falls.forEach(f => { if (f.active && !f.landed && f.m.position.y < 3) { const d = Math.hypot(f.m.position.x - cat.position.x, f.m.position.z - cat.position.z); if (d < bd && isFree(f.m.position.x, f.m.position.z)) { bd = d; best = f; } } });
+    falls.forEach(f => { if (f.active && !f.landed && f.m.position.y < 3.2) { const d = Math.hypot(f.m.position.x - cat.position.x, f.m.position.z - cat.position.z); if (d < bd) { bd = d; best = f; } } });
+    cu.batT = Math.max(0, (cu.batT || 0) - dt);
     if (best) {
-      goal = tmpV2.set(best.m.position.x, 0, best.m.position.z); speed = 2.2;
-      if (bd < .8 && best.m.position.y < 1.6 && cu.jumpY < .01 && cu.cool <= 0) { cu.jumpV = 4.4; cu.cool = 1.2; }
-    }
+      const spot = reachable(best.m.position.x, best.m.position.z);
+      const fx = best.m.position.x - cat.position.x, fz = best.m.position.z - cat.position.z;
+      const sd = Math.hypot(spot.x - cat.position.x, spot.z - cat.position.z);
+      if (sd < .35 || bd < 1.3) { cu.batT = 1.4; cat.rotation.y = angLerp(cat.rotation.y, Math.atan2(fx, fz), 1 - Math.exp(-dt * 6)); }
+      else if (cu.batT <= 0) { goal = tmpV2.copy(spot); speed = 2; }
+    } else if (!seasonTrees.some(tr => tr.userData.fallColors[state.season])) cu.batT = 1; // no petals this season: bat at the air
+    batting = cu.batT > 0;
   } else if (cu.mode === 'roll') {
-    goal = cu.target; speed = 1.6;
+    goal = cu.target; speed = 1.4;
   } else if (cu.mode === 'pounce') {
-    cu.next -= dt;
-    if (cu.next <= 0 && cu.jumpY < .01) { cu.target = spotNear(cat.position, 1.3); cu.jumpV = 4.2; cu.next = 1.2 + Math.random() * .6; }
-    if (cu.jumpY > 0) { goal = cu.target; speed = 2.4; }
+    // crouch and wiggle, then one long leap; repeat
+    if (cu.jumpY < .01 && cu.pph !== 'crouch') { cu.pph = 'crouch'; cu.next = .8 + Math.random() * .6; cu.target = spotNear(cat.position, 2.2); }
+    if (cu.pph === 'crouch') {
+      const dx = cu.target.x - cat.position.x, dz = cu.target.z - cat.position.z;
+      if (Math.hypot(dx, dz) > .05) cat.rotation.y = angLerp(cat.rotation.y, Math.atan2(dx, dz), 1 - Math.exp(-dt * 8));
+      cu.next -= dt; if (cu.next <= 0) { cu.pph = 'leap'; cu.jumpV = 5.8; }
+    }
+    if (cu.pph === 'leap') { goal = cu.target; speed = 3.8; }
   }
   let moving = false;
   if (goal) {
@@ -1081,23 +1103,30 @@ function tick() {
   if (cu.mode === 'shelter' && !moving) cat.rotation.y = angLerp(cat.rotation.y, .5, 1 - Math.exp(-dt * 3));
   cu.nap = lerp(cu.nap, cu.mode === 'nap' ? 1 : 0, 1 - Math.exp(-dt * 3));
   const walkBob = moving && cu.jumpY <= 0 ? Math.abs(Math.sin(t * 12)) * .06 : 0;
-  cat.position.y = hop(cat, dt) + walkBob;
-  cat.scale.set(1 + cu.nap * .12, 1 - cu.nap * .3, 1 + cu.nap * .12);
+  const ease = k => 1 - Math.exp(-dt * k);
+  cu.crouch = lerp(cu.crouch || 0, cu.mode === 'pounce' && cu.pph === 'crouch' ? 1 : 0, ease(10));
+  cu.rear = lerp(cu.rear || 0, batting ? 1 : 0, ease(7));
+  cu.lie = lerp(cu.lie || 0, cu.mode === 'roll' && !moving ? 1 : 0, ease(2.2));
+  // lying: first onto its side, then belly-up, swaying lazily
+  const lieA = cu.lie * (Math.PI * .8 + Math.sin(t * 1.2) * .35 * cu.lie);
+  cat.rotation.z = lieA + Math.sin(t * 17) * .09 * cu.crouch;
+  cat.rotation.x = -.62 * cu.rear;
+  cat.position.y = hop(cat, dt) + walkBob + .42 * (1 - Math.cos(lieA)) + .1 * cu.lie;
+  cu.head.position.set(0, .95 - .33 * cu.lie, .22 + .22 * cu.lie);
+  cat.scale.set(1 + cu.nap * .12 + cu.crouch * .06, 1 - cu.nap * .3 - cu.crouch * .2, 1 + cu.nap * .12 + cu.crouch * .08);
   const grooming = cu.mode === 'groom';
   cu.head.rotation.x = cu.nap * .5 + (grooming ? .35 + Math.sin(t * 8) * .12 : 0);
   cu.head.rotation.y = (cu.mode === 'chase' || moving) ? 0 : Math.sin(t * .9) * .3 * (1 - cu.nap);
   cu.head.rotation.z = Math.sin(t * .5) * .1;
-  const rolling = cu.mode === 'roll' && !moving;
-  cat.rotation.z = rolling ? Math.sin(t * 4) * 1.2 : lerp(cat.rotation.z, 0, 1 - Math.exp(-dt * 6));
-  if (rolling && Math.random() < dt * 3 && state.season === 'autumn') spawnFall(seasonTrees[0]);
+  if (cu.lie > .3) cu.head.rotation.z += Math.sin(t * .8) * .25;
   cu.paws.forEach((pw, i) => {
-    const lift = grooming && i === 1 ? .3 : 0;
-    pw.position.y = lerp(pw.position.y, .08 + lift, 1 - Math.exp(-dt * 8));
-    pw.position.z = .36 + (moving ? Math.sin(t * 12 + i * Math.PI) * .09 : 0) + (grooming && i === 1 ? .08 : 0);
+    const lift = (grooming && i === 1 ? .3 : 0) + cu.rear * (.32 + Math.max(0, Math.sin(t * 9 + i * Math.PI)) * .2) + cu.lie * (.06 + Math.sin(t * 2.4 + i * 1.7) * .05);
+    pw.position.y = lerp(pw.position.y, .08 + lift, ease(10));
+    pw.position.z = .36 + (moving ? Math.sin(t * 12 + i * Math.PI) * .09 : 0) + (grooming && i === 1 ? .08 : 0) + cu.rear * .08 + cu.crouch * .06;
   });
   const catBlink = blinkT > 0 && blinkT < .14;
-  cu.eyes.forEach(e => { e.scale.y = cu.nap > .5 ? .15 : grooming ? .5 : catBlink ? .2 : 1.4; });
-  const excited = cu.mode === 'chase' || cu.mode === 'pounce' ? 2.2 : 1;
+  cu.eyes.forEach(e => { e.scale.y = cu.nap > .5 ? .15 : (grooming || cu.lie > .5) ? .5 : catBlink ? .2 : 1.4; });
+  const excited = cu.mode === 'chase' || cu.mode === 'petal' ? 2.2 : cu.crouch > .5 ? 4 : cu.lie > .5 ? .5 : 1;
   cu.segs.forEach((s, i) => { s.rotation.z = Math.sin(t * 2.2 * excited - i * .6) * (.25 + cur.wind * .1) * (1 - cu.nap * .7); });
   // sleepy z's above a napping cat
   if (cu.nap > .7) {
