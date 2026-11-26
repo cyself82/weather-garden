@@ -1,0 +1,1178 @@
+<title>날씨 정원</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap">
+<style>
+/* Layout: full-bleed 3D diorama with a chunky game HUD — title badge on top, weather dock at the bottom. Single deliberate look (sky game world). */
+:root{
+  --ink:#33294a;
+  --card:#ffffff;
+  --card-2:#f2efff;
+  --muted:#6d6585;
+  --accent:#ff7a6b;
+  --sun:#ffe27a;
+  --cloud:#e3e8f0;
+  --rain:#a9d4ff;
+  --snow:#dff3ff;
+  --sky:#9fd8ff;
+  --display:"Nanum Gothic",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --body:"Nanum Gothic",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  color-scheme:light;
+}
+html,body{height:100%}
+body{background:var(--sky);color:var(--ink);font-family:var(--body);overflow:hidden}
+#app{position:fixed;inset:0}
+#c{display:block;width:100%;height:100%;touch-action:none;cursor:grab;outline:none}
+#c.dragging{cursor:grabbing}
+
+.hud-top{position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));pointer-events:none}
+.badge{pointer-events:auto;background:var(--card);border:2px solid var(--ink);border-radius:16px;padding:7px 14px 8px;box-shadow:0 4px 0 var(--ink);min-width:0}
+.badge h1{font-family:var(--display);font-weight:800;font-size:1.3rem;line-height:1.15;margin:0;letter-spacing:.5px}
+.badge p{margin:2px 0 0;font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.hint{pointer-events:none;align-self:center;background:rgba(255,255,255,.85);border:2px solid var(--ink);border-radius:999px;padding:6px 14px;font-size:.82rem;transition:opacity .6s}
+.hint.gone{opacity:0}
+
+.dock{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;justify-content:center;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));pointer-events:none;flex-direction:column;align-items:center}
+.dock-inner{pointer-events:auto;width:100%;max-width:560px;background:var(--card);border:2px solid var(--ink);border-radius:24px;box-shadow:0 6px 0 var(--ink);padding:12px;display:grid;gap:10px}
+.wbtns{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.wbtn{font-family:var(--display);font-weight:800;font-size:1.05rem;color:var(--ink);background:var(--card-2);border:2px solid var(--ink);border-radius:14px;padding:7px 4px 5px;display:flex;flex-direction:column;align-items:center;gap:1px;box-shadow:0 4px 0 var(--ink);cursor:pointer;transition:transform .08s,box-shadow .08s,background .2s}
+.wbtn svg{width:32px;height:32px}
+.wbtn:hover{transform:translateY(-1px);box-shadow:0 5px 0 var(--ink)}
+.wbtn[aria-pressed="true"]{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.wbtn[data-w="sunny"][aria-pressed="true"]{background:var(--sun)}
+.wbtn[data-w="cloudy"][aria-pressed="true"]{background:var(--cloud)}
+.wbtn[data-w="rain"][aria-pressed="true"]{background:var(--rain)}
+.wbtn[data-w="snow"][aria-pressed="true"]{background:var(--snow)}
+.sbtns{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.sbtn{font-family:var(--display);font-weight:800;font-size:.9rem;color:var(--ink);background:var(--card-2);border:2px solid var(--ink);border-radius:10px;padding:5px 2px;box-shadow:0 3px 0 var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+.sbtn::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--dot);border:1.5px solid var(--ink)}
+.sbtn[data-s="spring"]{--dot:#ff9cbc;--on:#ffd6e4}
+.sbtn[data-s="summer"]{--dot:#5cbf5f;--on:#cdeeb8}
+.sbtn[data-s="autumn"]{--dot:#f0662f;--on:#ffd0ac}
+.sbtn[data-s="winter"]{--dot:#ffffff;--on:#dcebf8}
+.sbtn[aria-pressed="true"]{background:var(--on);transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.sbtn:focus-visible,.wbtn:focus-visible,.go:focus-visible,.city:focus-visible,.slider:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.more{display:grid;gap:10px;min-width:0}
+.moreBtn{display:none;font-family:var(--body);font-weight:800;font-size:.85rem;color:var(--ink);background:none;border:0;padding:2px;cursor:pointer;justify-self:center}
+.moreBtn::after{content:" ▾"}
+.moreBtn[aria-expanded="true"]::after{content:" ▴"}
+.moreBtn:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+.row{display:flex;align-items:center;gap:10px;min-width:0}
+.row label{width:4.6em;font-family:var(--display);font-weight:800;font-size:.98rem;white-space:nowrap}
+.slider{flex:1;min-width:0;accent-color:var(--accent);height:24px}
+.amt{font-variant-numeric:tabular-nums;font-size:.85rem;color:var(--muted);width:3.2em;text-align:right}
+form.row{gap:8px}
+.city{flex:1;min-width:0;font-family:var(--body);font-size:.95rem;color:var(--ink);background:var(--card-2);border:2px solid var(--ink);border-radius:12px;padding:8px 12px}
+.city::placeholder{color:var(--muted)}
+.go{font-family:var(--display);font-weight:800;font-size:1rem;color:var(--card);background:var(--accent);border:2px solid var(--ink);border-radius:12px;padding:8px 14px;box-shadow:0 3px 0 var(--ink);cursor:pointer;white-space:nowrap}
+.go:active{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+.go:disabled{opacity:.6;cursor:wait}
+.catrow{display:grid;gap:6px;min-width:0}
+.cathead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cathead span{font-family:var(--display);font-weight:800;font-size:.98rem}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.chip{font-family:var(--body);font-weight:700;font-size:.82rem;color:var(--ink);background:var(--card-2);border:2px solid var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer;white-space:nowrap}
+.chip[aria-pressed="true"]{background:#ffe0a3}
+.chip:focus-visible,.focus:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.focus{font-family:var(--body);font-weight:700;font-size:.8rem;color:var(--ink);background:var(--card);border:2px solid var(--ink);border-radius:10px;padding:3px 9px;cursor:pointer;box-shadow:0 2px 0 var(--ink)}
+.focus[aria-pressed="true"]{background:#ffe0a3;transform:translateY(2px);box-shadow:none}
+@media (max-width:819px){.chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}}
+.status{font-size:.8rem;color:var(--muted);margin:0;line-height:1.4}
+.status:empty{display:none}
+.credit{margin:0;font-size:.72rem;color:var(--muted)}
+.credit a{color:inherit}
+
+.bubble{position:absolute;left:0;top:0;pointer-events:none;background:var(--card);color:var(--ink);border:2px solid var(--ink);border-radius:14px;padding:6px 12px;font-family:var(--display);font-weight:800;font-size:1rem;white-space:nowrap;box-shadow:0 3px 0 var(--ink);transform-origin:50% 100%;opacity:0;transition:opacity .2s}
+.bubble.show{opacity:1}
+.zzz{position:absolute;left:0;top:0;pointer-events:none;font-family:var(--display);font-weight:800;color:var(--ink);opacity:0;transition:opacity .4s;display:flex;gap:2px;align-items:flex-end}
+.zzz.show{opacity:1}
+.zzz span{display:inline-block;animation:zfloat 2.4s ease-in-out infinite;text-shadow:0 0 6px #fff,0 0 2px #fff}
+.zzz span:nth-child(1){font-size:.8rem;animation-delay:0s}
+.zzz span:nth-child(2){font-size:1.1rem;animation-delay:.4s}
+.zzz span:nth-child(3){font-size:.8rem;animation-delay:.8s}
+@keyframes zfloat{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(-8px);opacity:1}}
+@media (prefers-reduced-motion:reduce){.zzz span{animation:none}}
+.bubble::after{content:"";position:absolute;left:50%;bottom:-9px;width:12px;height:12px;background:var(--card);border-right:2px solid var(--ink);border-bottom:2px solid var(--ink);transform:translateX(-50%) rotate(45deg)}
+
+@media (min-width:820px){
+  .dock{top:calc(env(safe-area-inset-top,0px) + 14px);bottom:auto;left:auto;justify-content:flex-end}
+  .dock-inner{width:300px}
+  .hint{position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 16px)}
+  .wbtns{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:819px){
+  .moreBtn{display:block}
+  .more:not(.open){display:none}
+  .dock{bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}
+  .dock-inner{padding:8px 10px 4px;gap:7px;border-radius:20px;box-shadow:0 4px 0 var(--ink);max-height:62vh;overflow-y:auto}
+  .wbtns{gap:6px}
+  .wbtn{flex-direction:row;justify-content:center;gap:4px;font-size:.88rem;padding:5px 2px;border-radius:12px;box-shadow:0 3px 0 var(--ink)}
+  .wbtn svg{width:20px;height:20px}
+  .wbtn[aria-pressed="true"]{transform:translateY(2px);box-shadow:0 1px 0 var(--ink)}
+  .sbtn{font-size:.82rem;padding:3px 2px;box-shadow:0 2px 0 var(--ink)}
+  .sbtn[aria-pressed="true"]{box-shadow:0 0 0 var(--ink)}
+}
+@media (max-width:480px){
+  .hud-top{top:calc(env(safe-area-inset-top,0px) + 10px)}
+  .badge{padding:5px 11px 6px;border-radius:13px;box-shadow:0 3px 0 var(--ink)}
+  .badge h1{font-size:1.05rem}
+  .badge p{font-size:.72rem}
+  .hint{display:none}
+}
+
+/* ---- refined skin: frosted glass panels, soft shadows, segmented controls ---- */
+:root{--line:rgba(51,41,74,.12);--fill:rgba(51,41,74,.055);--fill-2:rgba(51,41,74,.09);--glass:rgba(255,255,255,.74);--lift:0 10px 30px rgba(40,30,80,.14),0 1px 3px rgba(40,30,80,.08);--pick:0 1px 2px rgba(40,30,80,.12),0 4px 12px rgba(40,30,80,.10)}
+.badge,.dock-inner,.hint,.bubble{background:var(--glass);-webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);border:1px solid rgba(255,255,255,.85);box-shadow:var(--lift)}
+.badge{border-radius:14px}
+.badge h1{letter-spacing:-.2px}
+.hint{color:var(--muted)}
+.dock-inner{border-radius:22px;padding:12px}
+.bubble{font-weight:700;border-radius:12px}
+.bubble::after{background:rgba(255,255,255,.92);border:0}
+.wbtns{background:var(--fill);padding:4px;border-radius:16px;gap:4px}
+.wbtn,.wbtn:hover{background:transparent;border:0;box-shadow:none;transform:none;border-radius:12px;font-weight:700;color:var(--muted);transition:background .2s,color .2s,box-shadow .2s}
+.wbtn:hover{background:rgba(255,255,255,.5)}
+.wbtn svg{opacity:.75;transition:opacity .2s}
+.wbtn[aria-pressed="true"],.wbtn[data-w][aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:var(--pick);transform:none}
+.wbtn[aria-pressed="true"] svg{opacity:1}
+.wbtn[aria-pressed="true"]::after{content:"";width:16px;height:3px;border-radius:2px;background:var(--tone);margin-top:1px}
+.wbtn[data-w="sunny"]{--tone:#f5b83d}.wbtn[data-w="cloudy"]{--tone:#9aa6b8}.wbtn[data-w="rain"]{--tone:#5aa2e8}.wbtn[data-w="snow"]{--tone:#8fd0f2}
+.sbtns{gap:6px}
+.sbtn,.sbtn[aria-pressed="true"]{border:1px solid var(--line);box-shadow:none;transform:none;border-radius:999px;font-weight:700;background:transparent;color:var(--muted);transition:background .2s,color .2s}
+.sbtn::before{border:0;width:8px;height:8px;box-shadow:inset 0 0 0 1px rgba(51,41,74,.18)}
+.sbtn[aria-pressed="true"]{background:var(--on);border-color:transparent;color:var(--ink)}
+.row label,.cathead span{font-weight:700;font-size:.9rem;color:var(--ink)}
+.slider{accent-color:#e9806f}
+.chip{border:0;background:var(--fill);font-weight:700;color:var(--muted);padding:5px 11px;transition:background .2s,color .2s}
+.chip:hover{background:var(--fill-2)}
+.chip[aria-pressed="true"]{background:var(--ink);color:#fff}
+.focus,.focus[aria-pressed="true"]{border:1px solid var(--line);box-shadow:none;transform:none;background:#fff;border-radius:999px;padding:4px 11px}
+.focus[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.city{border:1px solid transparent;background:var(--fill);border-radius:12px}
+.city:focus{background:#fff;border-color:var(--line)}
+.go,.go:active{background:var(--ink);border:0;box-shadow:0 4px 12px rgba(51,41,74,.25);transform:none;border-radius:12px;font-weight:700}
+.go:hover{background:#463a63}
+.moreBtn{pointer-events:auto;position:relative;z-index:1;margin-bottom:-1px;color:var(--ink);font-weight:700;font-size:.78rem;padding:5px 14px 4px;border-radius:12px 12px 0 0;background:var(--glass);-webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);border:1px solid rgba(255,255,255,.85);border-bottom:0;box-shadow:0 -4px 12px rgba(40,30,80,.08)}
+.moreBtn::after{content:" ▴"}
+.moreBtn[aria-expanded="true"]::after{content:" ▾"}
+@media (max-width:819px){.dock-inner{border-top-left-radius:20px}}
+@media (max-width:819px){
+  .dock-inner{padding:8px 8px 4px;border-radius:20px}
+  .wbtns{border-radius:14px;padding:3px}
+  .wbtn[aria-pressed="true"]::after{display:none}
+  .badge{border-radius:12px}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.badge,.dock-inner,.hint,.bubble{background:rgba(255,255,255,.94)}}
+</style>
+
+<div id="app">
+  <canvas id="c" aria-label="날씨가 바뀌는 3D 정원. 드래그해서 둘러볼 수 있어요." tabindex="0"></canvas>
+
+  <div class="hud-top">
+    <div class="badge">
+      <h1>날씨 정원</h1>
+      <p id="place">직접 고른 날씨 · 맑음</p>
+    </div>
+    <div class="hint" id="hint">드래그로 둘러보기 · 친구들을 눌러 보세요</div>
+  </div>
+
+  <div class="bubble" id="bubble" aria-live="polite"></div>
+  <div class="zzz" id="zzz" aria-hidden="true"><span>z</span><span>Z</span><span>z</span></div>
+
+  <div class="dock">
+    <button class="moreBtn" id="moreBtn" type="button" aria-expanded="false" aria-controls="more">설정 더보기</button>
+    <div class="dock-inner">
+      <div class="wbtns" role="group" aria-label="날씨 고르기">
+        <button class="wbtn" data-w="sunny" aria-pressed="true" type="button">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><g stroke="#33294a" stroke-width="2.2" stroke-linecap="round"><line x1="16" y1="2.5" x2="16" y2="6"/><line x1="16" y1="26" x2="16" y2="29.5"/><line x1="2.5" y1="16" x2="6" y2="16"/><line x1="26" y1="16" x2="29.5" y2="16"/><line x1="6.5" y1="6.5" x2="8.8" y2="8.8"/><line x1="23.2" y1="23.2" x2="25.5" y2="25.5"/><line x1="6.5" y1="25.5" x2="8.8" y2="23.2"/><line x1="23.2" y1="8.8" x2="25.5" y2="6.5"/></g><circle cx="16" cy="16" r="6.5" fill="#ffc93d" stroke="#33294a" stroke-width="2.2"/></svg>
+          맑음
+        </button>
+        <button class="wbtn" data-w="cloudy" aria-pressed="false" type="button">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M9 24h15a5 5 0 0 0 .6-9.96A7.5 7.5 0 0 0 10.2 13 5.5 5.5 0 0 0 9 24z" fill="#ffffff" stroke="#33294a" stroke-width="2.2" stroke-linejoin="round"/></svg>
+          흐림
+        </button>
+        <button class="wbtn" data-w="rain" aria-pressed="false" type="button">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M9 19h15a5 5 0 0 0 .6-9.96A7.5 7.5 0 0 0 10.2 8 5.5 5.5 0 0 0 9 19z" fill="#c9d2de" stroke="#33294a" stroke-width="2.2" stroke-linejoin="round"/><g stroke="#3a86d9" stroke-width="2.4" stroke-linecap="round"><line x1="11" y1="23" x2="9.5" y2="27"/><line x1="17" y1="23" x2="15.5" y2="27"/><line x1="23" y1="23" x2="21.5" y2="27"/></g></svg>
+          비
+        </button>
+        <button class="wbtn" data-w="snow" aria-pressed="false" type="button">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><g stroke="#33294a" stroke-width="2.2" stroke-linecap="round"><line x1="16" y1="4" x2="16" y2="28"/><line x1="5.6" y1="10" x2="26.4" y2="22"/><line x1="5.6" y1="22" x2="26.4" y2="10"/><polyline points="12.5,6.5 16,9 19.5,6.5" fill="none"/><polyline points="12.5,25.5 16,23 19.5,25.5" fill="none"/></g><circle cx="16" cy="16" r="2.6" fill="#7cc3f0" stroke="#33294a" stroke-width="1.8"/></svg>
+          눈
+        </button>
+      </div>
+
+      <div class="sbtns" role="group" aria-label="계절 고르기">
+        <button class="sbtn" type="button" data-s="spring" aria-pressed="false">봄</button>
+        <button class="sbtn" type="button" data-s="summer" aria-pressed="false">여름</button>
+        <button class="sbtn" type="button" data-s="autumn" aria-pressed="false">가을</button>
+        <button class="sbtn" type="button" data-s="winter" aria-pressed="false">겨울</button>
+      </div>
+
+      <div class="more" id="more">
+      <div class="row">
+        <label for="sunAmt">햇빛 세기</label>
+        <input class="slider" id="sunAmt" type="range" min="20" max="200" step="1" value="75">
+        <span class="amt" id="sunLabel">75%</span>
+      </div>
+
+      <div class="row">
+        <label for="amount">비·눈 세기</label>
+        <input class="slider" id="amount" type="range" min="0.15" max="1" step="0.05" value="0.7">
+        <span class="amt" id="amtLabel">70%</span>
+      </div>
+
+      <div class="catrow">
+        <div class="cathead"><span>고양이 행동</span><button class="focus" id="catFocus" type="button" aria-pressed="false">고양이 가까이 보기</button></div>
+        <div class="chips" role="group" aria-label="고양이 행동 고르기">
+          <button class="chip" type="button" data-cat="auto" aria-pressed="true">알아서</button>
+          <button class="chip" type="button" data-cat="wander" aria-pressed="false">산책</button>
+          <button class="chip" type="button" data-cat="nap" aria-pressed="false">낮잠</button>
+          <button class="chip" type="button" data-cat="groom" aria-pressed="false">그루밍</button>
+          <button class="chip" type="button" data-cat="chase" aria-pressed="false">나비 잡기</button>
+          <button class="chip" type="button" data-cat="pounce" aria-pressed="false">폴짝폴짝</button>
+          <button class="chip" type="button" data-cat="shelter" aria-pressed="false">우산 밑으로</button>
+          <button class="chip" type="button" data-cat="petal" aria-pressed="false">꽃잎·낙엽 잡기</button>
+          <button class="chip" type="button" data-cat="roll" aria-pressed="false">낙엽에서 뒹굴기</button>
+          <button class="chip" type="button" data-cat="sit" aria-pressed="false">얌전히 앉기</button>
+        </div>
+      </div>
+
+      <form class="row" id="cityForm" autocomplete="off">
+        <input class="city" id="city" type="text" placeholder="도시 이름 (예: 서울, Tokyo)" value="서울" aria-label="도시 이름">
+        <button class="go" id="goBtn" type="submit">실제 날씨</button>
+      </form>
+      <p class="status" id="status" aria-live="polite"></p>
+      <p class="credit">날씨 데이터: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $ = s => document.querySelector(s);
+const statusEl = $('#status');
+const setStatus = t => { statusEl.textContent = t; };
+if (!window.THREE) { setStatus('3D 엔진을 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.'); return; }
+
+/* ---------- basics ---------- */
+const canvas = $('#c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fd8ff);
+scene.fog = new THREE.Fog(0x9fd8ff, 45, 110);
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 300);
+
+// seeded random so the garden is the same every visit
+let seed = 7;
+const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+
+const mat = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, flatShading: true, roughness: .85, metalness: 0 }, o || {}));
+function mesh(geo, m, x, y, z) { const me = new THREE.Mesh(geo, m); me.position.set(x || 0, y || 0, z || 0); me.castShadow = true; me.receiveShadow = true; return me; }
+function jitter(geo, amt) {
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const a = Math.sin(x * 12.99 + y * 78.23 + z * 37.71) * 43758.5453, r1 = a - Math.floor(a);
+    const b = Math.sin(x * 93.9 + y * 67.3 + z * 11.1) * 24634.6345, r2 = b - Math.floor(b);
+    const c = Math.sin(x * 41.3 + y * 17.7 + z * 59.9) * 15731.743, r3 = c - Math.floor(c);
+    p.setXYZ(i, x + (r1 - .5) * amt, y + (r2 - .5) * amt * .5, z + (r3 - .5) * amt);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// materials that turn white when snow piles up
+const WHITE = new THREE.Color(0xffffff);
+const snowables = [];
+function snowable(m, k) { snowables.push({ m, base: m.color.clone(), k }); return m; }
+const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
+const seasonals = [];
+function seasonal(entry, cols) { const target = {}; SEASONS.forEach(k => target[k] = new THREE.Color(cols[k])); seasonals.push({ entry, target }); }
+
+
+/* ---------- lights ---------- */
+const hemi = new THREE.HemisphereLight(0xffffff, 0x9bb07a, 1.0);
+scene.add(hemi);
+const sunLight = new THREE.DirectionalLight(0xfff1d6, 1.4);
+sunLight.position.set(-10, 18, 10);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+Object.assign(sunLight.shadow.camera, { left: -13, right: 13, top: 13, bottom: -13, near: 1, far: 60 });
+sunLight.shadow.bias = -0.0006;
+sunLight.shadow.normalBias = 0.02;
+scene.add(sunLight);
+
+/* ---------- island ---------- */
+const world = new THREE.Group(); scene.add(world);
+const grassMat = snowable(mat(0x8fd16a), .92);
+const top = mesh(jitter(new THREE.CylinderGeometry(9, 9.2, 0.8, 32, 1), 0.22), grassMat, 0, -0.4, 0);
+top.castShadow = false;
+world.add(top);
+world.add(mesh(jitter(new THREE.CylinderGeometry(9.2, 7.2, 2.4, 32, 2), 0.55), mat(0xb07a4f), 0, -2, 0));
+const rock = mesh(jitter(new THREE.ConeGeometry(7.2, 5, 12, 2), 0.8), mat(0x8c8593), 0, -5.7, 0);
+rock.rotation.x = Math.PI; world.add(rock);
+// little floating rocks
+[[-10, -3, 3, .9], [10.5, -2, -4, .7], [-6, -6, -9, .6]].forEach(([x, y, z, s]) => {
+  const r = mesh(jitter(new THREE.DodecahedronGeometry(s, 0), .15), mat(0x9c8e86), x, y, z); r.userData.float = rnd() * 6; world.add(r);
+});
+
+// grass tufts on the edge
+const tuftMat = snowable(mat(0x6fb552), .8);
+for (let i = 0; i < 26; i++) {
+  const a = rnd() * Math.PI * 2, r = 7.6 + rnd() * 1.1;
+  const t = mesh(new THREE.ConeGeometry(.16, .45 + rnd() * .3, 4), tuftMat, Math.cos(a) * r, .18, Math.sin(a) * r);
+  t.rotation.z = (rnd() - .5) * .4; world.add(t);
+}
+
+// stepping stones
+const stoneMat = snowable(mat(0xd4cfc9), .5);
+[[0.2, 7.6], [0.6, 6.3], [0.3, 5.0], [0.9, 3.8], [1.6, -2.6], [1.5, -3.8]].forEach(([x, z], i) => {
+  const s = mesh(jitter(new THREE.CylinderGeometry(.5, .55, .14, 7), .08), stoneMat, x, .02, z);
+  s.rotation.y = i; world.add(s);
+});
+
+seasonal(snowables.find(e => e.m === grassMat), { spring: 0x9adf78, summer: 0x8fd16a, autumn: 0xbccd6c, winter: 0xa6c897 });
+seasonal(snowables.find(e => e.m === tuftMat), { spring: 0x7fcf5c, summer: 0x6fb552, autumn: 0xa9b85a, winter: 0x8fb07f });
+
+/* ---------- cottage ---------- */
+const house = new THREE.Group(); house.position.set(1.4, 0, -5.2); house.rotation.y = -.25; world.add(house);
+house.add(mesh(new THREE.BoxGeometry(2.6, 1.9, 2.2), mat(0xfff1e0), 0, .95, 0));
+const roofMat = snowable(mat(0xe56b6f), .85);
+const roof = mesh(new THREE.ConeGeometry(2.3, 1.5, 4), roofMat, 0, 2.65, 0); roof.rotation.y = Math.PI / 4; house.add(roof);
+house.add(mesh(new THREE.BoxGeometry(.35, .8, .35), mat(0xa36a55), .7, 2.9, -.3));
+house.add(mesh(new THREE.BoxGeometry(.62, 1.05, .08), mat(0x8b5a3c), 0, .52, 1.12));
+const windowMat = new THREE.MeshStandardMaterial({ color: 0x9fd3ff, emissive: 0xffc861, emissiveIntensity: 0, flatShading: true });
+[-.85, .85].forEach(x => {
+  house.add(mesh(new THREE.BoxGeometry(.5, .5, .06), windowMat, x, 1.15, 1.12));
+  house.add(mesh(new THREE.BoxGeometry(.62, .08, .14), mat(0xffffff), x, .86, 1.15));
+});
+house.userData.kind = 'house';
+
+/* ---------- fence ---------- */
+const woodMat = snowable(mat(0xc9935f), .35);
+const posts = [];
+for (let i = 0; i <= 9; i++) { const a = Math.PI * (1.12 + .76 * i / 9); posts.push(new THREE.Vector3(Math.cos(a) * 8.1, 0, Math.sin(a) * 8.1)); }
+posts.forEach((p, i) => {
+  world.add(mesh(new THREE.BoxGeometry(.2, 1, .2), woodMat, p.x, .5, p.z));
+  const cap = mesh(new THREE.ConeGeometry(.17, .2, 4), woodMat, p.x, 1.1, p.z); cap.rotation.y = Math.PI / 4; world.add(cap);
+  if (i < posts.length - 1) {
+    const q = posts[i + 1], d = p.distanceTo(q), ang = -Math.atan2(q.z - p.z, q.x - p.x);
+    [.35, .72].forEach(h => { const r = mesh(new THREE.BoxGeometry(d, .12, .08), woodMat, (p.x + q.x) / 2, h, (p.z + q.z) / 2); r.rotation.y = ang; world.add(r); });
+  }
+});
+
+/* ---------- trees ---------- */
+const leafMats = [snowable(mat(0x5fbf6a), .7), snowable(mat(0x7fd07a), .7), snowable(mat(0x3f9e6b), .75)];
+const trunkMat = mat(0x8b5a3c);
+const trees = [];
+// seasons: leaf colours (and grass) move toward the chosen season's colour, snow tint goes on top
+const TREE_COLORS = {
+  cherry: [
+    { spring: 0xffc4d6, summer: 0x6cc46e, autumn: 0xf2c14e, winter: 0xd9a441 },
+    { spring: 0xffb0c8, summer: 0x5fb862, autumn: 0xe9a83a, winter: 0xcf953a },
+    { spring: 0xffdbe6, summer: 0x79cf78, autumn: 0xf5d06a, winter: 0xe0b354 },
+    { spring: 0xffc9da, summer: 0x68c06a, autumn: 0xeeb845, winter: 0xd6a040 }],
+  maple: [
+    { spring: 0xb4e37a, summer: 0x4fae5c, autumn: 0xe63946, winter: 0xc8323f },
+    { spring: 0xa3db6a, summer: 0x5cbb63, autumn: 0xf4762d, winter: 0xd9612a },
+    { spring: 0xbde88a, summer: 0x48a656, autumn: 0xf6b93b, winter: 0xe0a33a },
+    { spring: 0xa8de70, summer: 0x56b45e, autumn: 0xec5a3a, winter: 0xc94a33 }]
+};
+const FALL_COLORS = {
+  cherry: { spring: [0xffc4d6, 0xffb0c8, 0xffe0ea], autumn: [0xf2c14e, 0xe9a83a, 0xf5d06a] },
+  maple: { autumn: [0xe63946, 0xf4762d, 0xf6b93b, 0xec5a3a] }
+};
+const seasonTrees = [];
+function roundTree(x, z, s, type) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s);
+  g.add(mesh(new THREE.CylinderGeometry(.22, .32, 1.6, 6), type === 'cherry' ? mat(0x6e4a3a) : trunkMat, 0, .8, 0));
+  [[0, 2.1, 0, 1.15, 0], [-.55, 1.7, .25, .8, 1], [.6, 1.85, -.1, .85, 1], [.1, 2.75, .05, .75, 0]].forEach(([a, b, c, r, mi], i) => {
+    let m = leafMats[mi];
+    if (type) { m = snowable(mat(0xffffff), .6); seasonal(snowables[snowables.length - 1], TREE_COLORS[type][i]); }
+    g.add(mesh(new THREE.IcosahedronGeometry(r, 0), m, a, b, c));
+  });
+  if (type) { g.userData = { kind: type, tree: true, h: 3.4, fallColors: FALL_COLORS[type], shake: 0, acc: Math.random() }; seasonTrees.push(g); }
+  world.add(g); trees.push(g); return g;
+}
+function pineTree(x, z, s) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s);
+  g.add(mesh(new THREE.CylinderGeometry(.18, .25, .9, 6), trunkMat, 0, .45, 0));
+  [[1.2, 1.3, 1.2], [.95, 1.1, 1.95], [.65, .95, 2.6]].forEach(([r, h, y]) => g.add(mesh(new THREE.ConeGeometry(r, h, 7), leafMats[2], 0, y, 0)));
+  world.add(g); trees.push(g); return g;
+}
+roundTree(-5.3, -3.3, 1.15, 'maple');
+roundTree(6.3, -3.4, .95, 'cherry');
+roundTree(-5.7, 5.0, .7, 'cherry');
+pineTree(-6.9, .6, 1.1);
+pineTree(-3.2, -6.3, 1.0);
+pineTree(5.2, 4.9, .8);
+
+/* ---------- flowers ---------- */
+const flowers = [];
+const petalCols = [0xff8fab, 0xffd166, 0xc59bff, 0xff7a6b, 0xffffff];
+const stemMat = mat(0x4f9a4a);
+const bedCenter = new THREE.Vector3(-3.6, 0, 3.0);
+const soil = mesh(jitter(new THREE.CylinderGeometry(1.7, 1.8, .18, 10), .1), snowable(mat(0x8a5a3a), .8), bedCenter.x, .04, bedCenter.z);
+soil.scale.z = .8; world.add(soil);
+for (let i = 0; i < 14; i++) {
+  const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 1.35;
+  const f = new THREE.Group(); f.position.set(bedCenter.x + Math.cos(a) * r, .1, bedCenter.z + Math.sin(a) * r * .8);
+  const h = .45 + rnd() * .35;
+  f.add(mesh(new THREE.CylinderGeometry(.035, .035, h, 4), stemMat, 0, h / 2, 0));
+  const pm = mat(petalCols[i % petalCols.length]);
+  for (let k = 0; k < 5; k++) { const ang = k / 5 * Math.PI * 2; const p = mesh(new THREE.SphereGeometry(.1, 6, 4), pm, Math.cos(ang) * .11, h, Math.sin(ang) * .11); p.scale.y = .5; f.add(p); }
+  f.add(mesh(new THREE.SphereGeometry(.07, 6, 4), mat(0xffb703), 0, h + .02, 0));
+  f.userData.ph = rnd() * 6; world.add(f); flowers.push(f);
+}
+
+/* ---------- mushrooms ---------- */
+function mushroom(x, z, s) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s);
+  g.add(mesh(new THREE.CylinderGeometry(.12, .16, .4, 6), mat(0xfff4e6), 0, .2, 0));
+  const cap = mesh(new THREE.SphereGeometry(.32, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), snowable(mat(0xe63946), .7), 0, .38, 0); g.add(cap);
+  [[.15, .5, .12], [-.14, .52, .08], [0, .6, -.13]].forEach(([a, b, c]) => g.add(mesh(new THREE.SphereGeometry(.05, 5, 4), mat(0xffffff), a, b, c)));
+  world.add(g);
+}
+mushroom(2.4, 4.4, 1); mushroom(2.95, 4.85, .7); mushroom(-6.4, 2.9, .85);
+
+/* ---------- pond ---------- */
+const pondPos = new THREE.Vector3(4.6, 0, .6);
+const pondMat = new THREE.MeshStandardMaterial({ color: 0x5ab4e5, roughness: .3, metalness: .05, flatShading: true });
+const pondBase = new THREE.Color(0x5ab4e5), pondIce = new THREE.Color(0xd6eef9);
+const pond = mesh(new THREE.CylinderGeometry(1.75, 1.75, .1, 14), pondMat, pondPos.x, .03, pondPos.z);
+pond.castShadow = false; world.add(pond);
+for (let i = 0; i < 14; i++) {
+  const a = i / 14 * Math.PI * 2 + rnd() * .2;
+  const s = mesh(jitter(new THREE.DodecahedronGeometry(.25 + rnd() * .12, 0), .06), stoneMat, pondPos.x + Math.cos(a) * 1.85, .08, pondPos.z + Math.sin(a) * 1.85);
+  s.scale.y = .6; world.add(s);
+}
+const lily = mesh(new THREE.CylinderGeometry(.3, .3, .03, 8, 1, false, .3, Math.PI * 1.75), mat(0x4caf50), pondPos.x - .7, .1, pondPos.z + .5);
+world.add(lily);
+
+/* ---------- puddles (rain) ---------- */
+const puddleMat = new THREE.MeshStandardMaterial({ color: 0x6f9fc4, roughness: .15, transparent: true, opacity: .75 });
+const puddles = [[1.2, 3.1, .7], [-1.6, -1.4, .55], [3.1, -2.2, .5], [-4.6, .1, .45]].map(([x, z, r]) => {
+  const p = new THREE.Mesh(new THREE.CylinderGeometry(r, r, .02, 12), puddleMat); p.position.set(x, .03, z); p.scale.set(.001, 1, .001); p.receiveShadow = true; world.add(p); return p;
+});
+
+/* ---------- the kid ---------- */
+function makeKid() {
+  const g = new THREE.Group();
+  const body = new THREE.Group(); g.add(body);
+  const shirt = mat(0xffc94d);
+  body.add(mesh(new THREE.CylinderGeometry(.42, .6, .9, 20), shirt, 0, .78, 0));
+  [-.2, .2].forEach(x => {
+    body.add(mesh(new THREE.CylinderGeometry(.14, .14, .35, 20), mat(0x4a6fa5), x, .2, 0));
+    const shoe = mesh(new THREE.SphereGeometry(.16, 20, 14), mat(0x5b3a2e), x, .07, .06); shoe.scale.set(.85, .55, 1.15); body.add(shoe);
+  });
+  const head = new THREE.Group(); head.position.y = 1.78; body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(.72, 24, 18), mat(0xffd9b8, { flatShading: false }), 0, 0, 0));
+  const hair = mesh(new THREE.SphereGeometry(.77, 24, 18, 0, Math.PI * 2, 0, Math.PI * .5), mat(0x5a3a2e), 0, .02, -.05);
+  hair.rotation.x = -.35; head.add(hair);
+  const tuft = mesh(new THREE.ConeGeometry(.12, .35, 16), mat(0x5a3a2e), .05, .82, -.05); tuft.rotation.z = -.4; head.add(tuft);
+  const eyes = [];
+  [-.25, .25].forEach(x => {
+    const e = new THREE.Group(); e.position.set(x, -.02, .64);
+    const ball = mesh(new THREE.SphereGeometry(.095, 24, 18), mat(0x2b2233, { flatShading: false })); ball.scale.set(1, 1.3, .6); e.add(ball);
+    e.add(mesh(new THREE.SphereGeometry(.032, 24, 18), new THREE.MeshBasicMaterial({ color: 0xffffff }), .03, .05, .05));
+    head.add(e); eyes.push(e);
+    const ck = mesh(new THREE.SphereGeometry(.12, 24, 18), mat(0xff9aa2, { flatShading: false }), x * 1.7, -.2, .55); ck.scale.set(1, .6, .4); head.add(ck);
+  });
+  const mouth = mesh(new THREE.TorusGeometry(.08, .025, 12, 28, Math.PI), mat(0x7a3b3b), 0, -.2, .69); mouth.rotation.z = Math.PI; head.add(mouth);
+  function arm(x) {
+    const p = new THREE.Group(); p.position.set(x, 1.12, 0);
+    p.add(mesh(new THREE.CylinderGeometry(.11, .11, .5, 20), shirt, 0, -.25, 0));
+    p.add(mesh(new THREE.SphereGeometry(.13, 24, 18), mat(0xffd9b8), 0, -.52, 0));
+    body.add(p); return p;
+  }
+  const armL = arm(-.52), armR = arm(.52);
+  // umbrella (rain)
+  const umbrella = new THREE.Group(); umbrella.position.set(.78, 0, .05); body.add(umbrella);
+  umbrella.add(mesh(new THREE.CylinderGeometry(.04, .04, 1.9, 20), mat(0x5b3a2e), 0, 2.3, 0));
+  const canopy = mesh(new THREE.ConeGeometry(1.6, .7, 16, 1, true), mat(0xff7a6b, { side: THREE.DoubleSide }), 0, 3.25, 0); umbrella.add(canopy);
+  umbrella.add(mesh(new THREE.SphereGeometry(.08, 24, 18), mat(0xffffff), 0, 3.62, 0));
+  umbrella.rotation.z = .18; umbrella.scale.setScalar(.001);
+  // beanie + scarf (snow)
+  const hat = new THREE.Group(); head.add(hat);
+  const knit = mat(0xe85d75);
+  const dome = mesh(new THREE.SphereGeometry(.8, 24, 18, 0, Math.PI * 2, 0, Math.PI * .5), knit, 0, .12, -.02); hat.add(dome);
+  const rim = mesh(new THREE.TorusGeometry(.75, .11, 12, 28), mat(0xffffff), 0, .2, -.02); rim.rotation.x = Math.PI / 2; hat.add(rim);
+  hat.add(mesh(new THREE.SphereGeometry(.17, 24, 18), mat(0xffffff), 0, .95, -.02));
+  hat.scale.setScalar(.001);
+  const scarf = new THREE.Group(); scarf.position.y = 1.16; body.add(scarf);
+  const sm = mat(0x4fb0c6);
+  const ring = mesh(new THREE.TorusGeometry(.42, .12, 12, 28), sm); ring.rotation.x = Math.PI / 2; scarf.add(ring);
+  const tail = mesh(new THREE.BoxGeometry(.2, .45, .08), sm, .22, -.25, .42); tail.rotation.z = .15; scarf.add(tail);
+  scarf.scale.setScalar(.001);
+  // sun hat (sunny)
+  const sunhat = new THREE.Group(); head.add(sunhat);
+  const straw = mat(0xf2d08a);
+  const brim = mesh(new THREE.CylinderGeometry(1.15, 1.15, .06, 20), straw, 0, .38, 0); sunhat.add(brim);
+  sunhat.add(mesh(new THREE.CylinderGeometry(.55, .62, .4, 20), straw, 0, .6, 0));
+  sunhat.add(mesh(new THREE.CylinderGeometry(.63, .63, .1, 20), mat(0xff7a6b), 0, .45, 0));
+  sunhat.rotation.x = -.18;
+  g.userData = { kind: 'kid', body, head, eyes, armL, armR, umbrella, hat, scarf, sunhat, jumpV: 0, jumpY: 0, h: 3.4 };
+  return g;
+}
+const kid = makeKid(); kid.position.set(0, 0, 1.4); world.add(kid);
+
+/* ---------- cat ---------- */
+function makeCat() {
+  // Scottish fold: round white cat with warm yellow patches, folded ears, striped tail
+  const g = new THREE.Group(); const fur = mat(0xeec98a), white = mat(0xfffaf2);
+  const b = mesh(new THREE.SphereGeometry(.42, 24, 18), white, 0, .42, 0); b.scale.set(1.05, .95, 1.15); g.add(b);
+  // yellow saddle on the back + a patch on one side
+  const saddle = mesh(new THREE.SphereGeometry(.43, 24, 18, 0, Math.PI * 2, 0, Math.PI * .36), fur, 0, .42, -.04);
+  saddle.scale.set(1.05, .95, 1.15); saddle.rotation.x = -.55; g.add(saddle);
+  const side = mesh(new THREE.SphereGeometry(.2, 20, 14), fur, .33, .48, -.05); side.scale.set(.45, 1, 1.2); g.add(side);
+  const chest = mesh(new THREE.SphereGeometry(.26, 24, 18), white, 0, .45, .3); chest.scale.set(1, 1.2, .6); g.add(chest);
+  const head = new THREE.Group(); head.position.set(0, .95, .22); g.add(head);
+  const eyes = [];
+  head.add(mesh(new THREE.SphereGeometry(.37, 24, 18), white));
+  // cream patches over both eyes and ears, split by a white stripe from the nose up the forehead
+  const BLAZE = .3;
+  const hood = mesh(new THREE.SphereGeometry(.38, 28, 20, Math.PI / 2 + BLAZE, Math.PI * 2 - BLAZE * 2, 0, Math.PI * .45), fur);
+  hood.rotation.x = .5; head.add(hood);
+  [-1, 1].forEach(sx => {
+    // small folded ears tipping forward
+    const ear = new THREE.Group(); ear.position.set(sx * .2, .31, .06); ear.rotation.set(1.05, 0, -sx * .45); head.add(ear);
+    const flap = mesh(new THREE.ConeGeometry(.12, .17, 16), fur, 0, .09, 0); ear.add(flap);
+    const e = mesh(new THREE.SphereGeometry(.055, 24, 18), mat(0x2b2233), sx * .14, .02, .34); e.scale.y = 1.35; head.add(e); eyes.push(e);
+    e.add(mesh(new THREE.SphereGeometry(.018, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }), .012, .015, .04));
+    const ck = mesh(new THREE.SphereGeometry(.06, 12, 8), mat(0xffb3c6), sx * .2, -.1, .29); ck.scale.set(1, .6, .4); head.add(ck);
+  });
+  head.add(mesh(new THREE.SphereGeometry(.04, 24, 18), mat(0xff8fab), 0, -.06, .37));
+  const muzzle = mesh(new THREE.SphereGeometry(.14, 24, 18), white, 0, -.12, .27); muzzle.scale.set(1.35, .8, .7); head.add(muzzle);
+  const paws = [-.15, .15].map(x => { const pw = mesh(new THREE.SphereGeometry(.1, 24, 18), white, x, .08, .36); g.add(pw); return pw; });
+  // tail: yellow/white stripes with a white tip
+  let parent = new THREE.Group(); parent.position.set(0, .3, -.42); g.add(parent);
+  const segs = [];
+  for (let i = 0; i < 6; i++) {
+    const s = new THREE.Group(); s.position.y = i === 0 ? 0 : .15; s.rotation.x = -.3;
+    s.add(mesh(new THREE.CylinderGeometry(.062, .068, .16, 20), i % 2 === 0 ? fur : white, 0, .08, 0));
+    if (i === 5) s.add(mesh(new THREE.SphereGeometry(.064, 16, 12), white, 0, .16, 0));
+    parent.add(s); segs.push(s); parent = s;
+  }
+  segs[0].rotation.x = -1.2;
+  g.userData = { kind: 'cat', head, segs, eyes, paws, jumpV: 0, jumpY: 0, h: 1.6, mode: 'sit', timer: 2, weather: 'sunny', nap: 0, cool: 0 };
+  return g;
+}
+const cat = makeCat(); cat.position.set(-1.8, 0, 2.3); cat.rotation.y = .4; world.add(cat);
+
+/* ---------- bunny ---------- */
+function makeBunny() {
+  const g = new THREE.Group(); const fur = mat(0xf7f4f2), pink = mat(0xffb3c6);
+  const b = mesh(new THREE.SphereGeometry(.33, 24, 18), fur, 0, .33, 0); b.scale.set(1, .9, 1.2); g.add(b);
+  g.add(mesh(new THREE.SphereGeometry(.12, 24, 18), fur, 0, .35, -.4));
+  const head = new THREE.Group(); head.position.set(0, .62, .26); g.add(head);
+  head.add(mesh(new THREE.SphereGeometry(.26, 24, 18), fur));
+  [-.1, .1].forEach(x => {
+    const ear = new THREE.Group(); ear.position.set(x, .2, -.02); ear.rotation.z = x * 1.2; head.add(ear);
+    const e1 = mesh(new THREE.CylinderGeometry(.06, .08, .5, 20), fur, 0, .25, 0); e1.scale.z = .55; ear.add(e1);
+    const e2 = mesh(new THREE.CylinderGeometry(.03, .04, .4, 20), pink, 0, .25, .03); e2.scale.z = .4; ear.add(e2);
+    const eye = mesh(new THREE.SphereGeometry(.04, 24, 18), mat(0x2b2233), x * 1.4, .04, .22); head.add(eye);
+  });
+  head.add(mesh(new THREE.SphereGeometry(.035, 24, 18), pink, 0, -.04, .26));
+  g.userData = { kind: 'bunny', jumpV: 0, jumpY: 0, h: 1.4 };
+  return g;
+}
+const bunny = makeBunny(); world.add(bunny);
+
+/* ---------- duck ---------- */
+function makeDuck() {
+  const g = new THREE.Group(); const y = mat(0xffd84d);
+  const b = mesh(new THREE.SphereGeometry(.32, 24, 18), y, 0, .15, 0); b.scale.set(1, .75, 1.3); g.add(b);
+  const tail = mesh(new THREE.ConeGeometry(.12, .25, 16), y, 0, .3, -.4); tail.rotation.x = -.9; g.add(tail);
+  g.add(mesh(new THREE.SphereGeometry(.21, 24, 18), y, 0, .5, .28));
+  const beak = mesh(new THREE.ConeGeometry(.08, .2, 16), mat(0xff8c42), 0, .46, .52); beak.rotation.x = Math.PI / 2; beak.scale.x = 1.5; g.add(beak);
+  [-.1, .1].forEach(x => g.add(mesh(new THREE.SphereGeometry(.035, 24, 18), mat(0x2b2233), x, .56, .45)));
+  g.userData = { kind: 'duck', jumpV: 0, jumpY: 0, h: 1.2 };
+  return g;
+}
+const duck = makeDuck(); world.add(duck);
+
+/* ---------- snowman ---------- */
+const snowman = new THREE.Group(); snowman.position.set(-4.1, 0, -0.9);
+const snowMat = mat(0xffffff);
+snowman.add(mesh(new THREE.IcosahedronGeometry(.8, 4), snowMat, 0, .7, 0));
+snowman.add(mesh(new THREE.IcosahedronGeometry(.56, 4), snowMat, 0, 1.75, 0));
+snowman.add(mesh(new THREE.IcosahedronGeometry(.42, 4), snowMat, 0, 2.55, 0));
+const nose = mesh(new THREE.ConeGeometry(.07, .4, 16), mat(0xff8c42), 0, 2.55, .55); nose.rotation.x = Math.PI / 2; snowman.add(nose);
+[[-.14, 2.68], [.14, 2.68], [0, 1.9], [0, 1.65]].forEach(([x, y], i) => snowman.add(mesh(new THREE.SphereGeometry(.05, 24, 18), mat(0x2b2233), x, y, i < 2 ? .38 : .54)));
+const sHat = mesh(new THREE.CylinderGeometry(.3, .3, .4, 20), mat(0x33294a), 0, 3.05, 0); snowman.add(sHat);
+snowman.add(mesh(new THREE.CylinderGeometry(.45, .45, .05, 20), mat(0x33294a), 0, 2.86, 0));
+snowman.scale.setScalar(.001);
+snowman.userData = { kind: 'snowman', jumpV: 0, jumpY: 0, h: 3.6 };
+world.add(snowman);
+
+// soft, rounded look for the characters and animals
+[kid, cat, bunny, duck, snowman].forEach(c => c.traverse(o => { if (o.isMesh && o.material.flatShading) { o.material.flatShading = false; o.material.roughness = .7; o.material.needsUpdate = true; } }));
+
+/* ---------- bird + butterflies ---------- */
+const bird = new THREE.Group();
+const bm = mat(0x6aa8ff);
+const bb = mesh(new THREE.SphereGeometry(.22, 8, 6), bm); bb.scale.z = 1.4; bird.add(bb);
+bird.add(mesh(new THREE.SphereGeometry(.15, 8, 6), bm, 0, .12, .25));
+const bbeak = mesh(new THREE.ConeGeometry(.05, .14, 4), mat(0xffb703), 0, .1, .44); bbeak.rotation.x = Math.PI / 2; bird.add(bbeak);
+const wings = [-1, 1].map(s => { const w = new THREE.Group(); w.position.set(s * .15, .05, 0); const m = mesh(new THREE.BoxGeometry(.5, .04, .25), mat(0x4d8fe8), s * .25, 0, 0); w.add(m); bird.add(w); return w; });
+world.add(bird);
+const butterflies = [0xff8fab, 0xc59bff, 0xffd166].map((c, i) => {
+  const g = new THREE.Group();
+  const wm = new THREE.MeshStandardMaterial({ color: c, side: THREE.DoubleSide, flatShading: true });
+  const wl = [-1, 1].map(s => { const w = new THREE.Group(); const p = new THREE.Mesh(new THREE.CircleGeometry(.14, 5), wm); p.position.x = s * .13; p.rotation.x = -Math.PI / 2; w.add(p); g.add(w); return w; });
+  g.userData = { wl, ph: i * 2.1 }; world.add(g); return g;
+});
+
+/* ---------- falling petals (spring) and leaves (autumn) ---------- */
+const petalGeo = new THREE.PlaneGeometry(.17, .12), leafGeo = new THREE.CircleGeometry(.11, 5);
+const falls = [];
+for (let i = 0; i < 110; i++) {
+  const m = new THREE.Mesh(petalGeo, new THREE.MeshStandardMaterial({ color: 0xffc4d6, side: THREE.DoubleSide, roughness: .8 }));
+  m.visible = false; m.receiveShadow = true; world.add(m); falls.push({ m, active: false, landed: false, born: 0 });
+}
+function spawnFall(tr) {
+  const pal = tr.userData.fallColors[state.season]; if (!pal) return;
+  let f = falls.find(q => !q.active);
+  if (!f) { f = falls.filter(q => q.landed).sort((a, b) => a.born - b.born)[0]; if (!f) return; }
+  const leaf = state.season === 'autumn', sc = tr.scale.x;
+  f.m.geometry = leaf ? leafGeo : petalGeo;
+  f.m.material.color.setHex(pal[Math.floor(Math.random() * pal.length)]);
+  const a = Math.random() * Math.PI * 2, rr = Math.random() * 1.1 * sc;
+  f.m.position.set(tr.position.x + Math.cos(a) * rr, (1.6 + Math.random() * 1.1) * sc, tr.position.z + Math.sin(a) * rr);
+  f.m.rotation.set(Math.random() * 6, Math.random() * 6, 0); f.m.scale.setScalar(1);
+  f.vy = -(leaf ? .8 : .5) - Math.random() * .3; f.ph = Math.random() * 6; f.spin = (Math.random() - .5) * 6;
+  f.active = true; f.landed = false; f.born = performance.now(); f.season = state.season; f.m.visible = true;
+}
+
+/* ---------- sky: sun + clouds ---------- */
+const sun = new THREE.Mesh(new THREE.IcosahedronGeometry(1.3, 1), new THREE.MeshBasicMaterial({ color: 0xffe066 }));
+sun.position.set(-2.5, 3.8, -13);
+const sunGlow = new THREE.Mesh(new THREE.IcosahedronGeometry(1.9, 1), new THREE.MeshBasicMaterial({ color: 0xfff3b0, transparent: true, opacity: .35 }));
+sun.add(sunGlow);
+const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 1, transparent: true, opacity: .96 });
+const cloudRing = new THREE.Group(); scene.add(cloudRing);
+cloudRing.add(sun); // the sun sits in the back sky with the clouds
+const clouds = [];
+for (let i = 0; i < 9; i++) {
+  const g = new THREE.Group(); const n = 3 + Math.floor(rnd() * 3);
+  for (let k = 0; k < n; k++) {
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(.8 + rnd() * .6, 0), cloudMat);
+    m.position.set((k - (n - 1) / 2) * .95, rnd() * .45, (rnd() - .5) * .9); g.add(m);
+  }
+  const a = Math.PI * (1.05 + .9 * i / 8) + (rnd() - .5) * .15, r = 7 + rnd() * 4;
+  g.position.set(Math.cos(a) * r, 4.6 + rnd() * 1.8, Math.sin(a) * r); g.userData.x0 = g.position.x;
+  g.userData.s = .55 + rnd() * .3; g.userData.order = rnd(); g.scale.setScalar(.001);
+  cloudRing.add(g); clouds.push(g);
+}
+clouds.sort((a, b) => a.userData.order - b.userData.order);
+
+/* ---------- rain + snow particles ---------- */
+const AREA = 12, TOPY = 16;
+const RAIN_N = 1600;
+const rainPos = new Float32Array(RAIN_N * 6);
+const rainGeo = new THREE.BufferGeometry();
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rainSeed = [];
+for (let i = 0; i < RAIN_N; i++) rainSeed.push({ x: (Math.random() * 2 - 1) * AREA, y: Math.random() * TOPY, z: (Math.random() * 2 - 1) * AREA, v: 16 + Math.random() * 6 });
+const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0x9fc4e8, transparent: true, opacity: .75 }));
+rain.frustumCulled = false; scene.add(rain);
+
+const SNOW_N = 1400;
+const snowPos = new Float32Array(SNOW_N * 3);
+const snowGeo = new THREE.BufferGeometry();
+snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+const snowSeed = [];
+for (let i = 0; i < SNOW_N; i++) snowSeed.push({ x: (Math.random() * 2 - 1) * AREA, y: Math.random() * TOPY, z: (Math.random() * 2 - 1) * AREA, v: 1.2 + Math.random() * 1.3, p: Math.random() * 6 });
+const flake = document.createElement('canvas'); flake.width = flake.height = 32;
+const fx = flake.getContext('2d'); const gr = fx.createRadialGradient(16, 16, 0, 16, 16, 16);
+gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.5, 'rgba(255,255,255,.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+fx.fillStyle = gr; fx.fillRect(0, 0, 32, 32);
+const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ size: .22, map: new THREE.CanvasTexture(flake), transparent: true, depthWrite: false }));
+snow.frustumCulled = false; scene.add(snow);
+
+/* ---------- weather presets ---------- */
+const W = {
+  sunny:  { label: '맑음', sky: 0x9fd8ff, hemi: .78, sunI: .92, light: 0xfff1d6, clouds: .25, cloudCol: 0xffffff, rain: 0, snow: 0, sunVis: 1, fauna: 1, dark: 0, wind: .25 },
+  cloudy: { label: '흐림', sky: 0xb9c6d3, hemi: .9, sunI: .55, light: 0xe8eef5, clouds: 1, cloudCol: 0xf2f4f8, rain: 0, snow: 0, sunVis: 0, fauna: .6, dark: .35, wind: .5 },
+  rain:   { label: '비', sky: 0x7d8da1, hemi: .7, sunI: .35, light: 0xcdd8e6, clouds: 1, cloudCol: 0x8f99a8, rain: 1, snow: 0, sunVis: 0, fauna: 0, dark: .95, wind: 1 },
+  snow:   { label: '눈', sky: 0xcfdbe8, hemi: .95, sunI: .55, light: 0xeef4ff, clouds: 1, cloudCol: 0xf6f8fc, rain: 0, snow: 1, sunVis: 0, fauna: 0, dark: .6, wind: .35 }
+};
+Object.values(W).forEach(w => { w.skyC = new THREE.Color(w.sky); w.lightC = new THREE.Color(w.light); w.cloudC = new THREE.Color(w.cloudCol); });
+
+// sunlight slider: shown 75% = actual strength 0.73 (scale fixed so the default reads as a round number)
+const SUN_SCALE = 0.73 / 75;
+const SEASON_LABEL = { spring: '봄', summer: '여름', autumn: '가을', winter: '겨울' };
+function seasonFor(month, south) { const n = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'][month]; return south ? { spring: 'autumn', autumn: 'spring', summer: 'winter', winter: 'summer' }[n] : n; }
+const state = { season: seasonFor(new Date().getMonth(), false), liveLabel: '', kind: 'sunny', catMode: 'auto', sunPower: 75 * SUN_SCALE, intensity: .7, source: 'manual', place: '' };
+const cur = { sky: new THREE.Color(0x9fd8ff), light: new THREE.Color(0xfff1d6), cloudC: new THREE.Color(0xffffff), hemi: .78, sunI: .92, clouds: .25, rain: 0, snow: 0, sunVis: 1, fauna: 1, dark: 0, wind: .25, snowCover: 0, wet: 0, umbrella: 0, winter: 0, sunhat: 1 };
+
+function setWeather(kind, opts) {
+  opts = opts || {};
+  state.kind = kind;
+  if (opts.intensity != null) { state.intensity = opts.intensity; amount.value = opts.intensity; updateAmt(); }
+  state.source = opts.source || 'manual';
+  document.querySelectorAll('.wbtn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.w === kind)));
+  updatePlace();
+}
+function updatePlace() {
+  $('#place').textContent = (state.source === 'live' ? state.liveLabel : '직접 고른 날씨 · ' + W[state.kind].label) + ' · ' + SEASON_LABEL[state.season];
+}
+function setSeason(sn) {
+  state.season = sn;
+  document.querySelectorAll('.sbtn').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.s === sn)));
+  updatePlace();
+}
+document.querySelectorAll('.sbtn').forEach(b => b.addEventListener('click', () => setSeason(b.dataset.s)));
+setSeason(state.season);
+seasonals.forEach(se => se.entry.base.copy(se.target[state.season]));
+
+/* ---------- UI ---------- */
+const amount = $('#amount'), amtLabel = $('#amtLabel');
+const sunAmt = $('#sunAmt'), sunLabel = $('#sunLabel');
+sunAmt.addEventListener('input', () => { state.sunPower = sunAmt.value * SUN_SCALE; sunLabel.textContent = sunAmt.value + '%'; });
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+  state.catMode = c.dataset.cat;
+  document.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', String(x === c)));
+  catThink();
+}));
+$('#catFocus').addEventListener('click', e => {
+  cam.focus = !cam.focus; e.currentTarget.setAttribute('aria-pressed', String(cam.focus));
+  e.currentTarget.textContent = cam.focus ? '정원 전체 보기' : '고양이 가까이 보기';
+});
+$('#moreBtn').addEventListener('click', e => {
+  const open = $('#more').classList.toggle('open');
+  e.currentTarget.setAttribute('aria-expanded', String(open));
+  e.currentTarget.textContent = open ? '설정 접기' : '설정 더보기';
+});
+function updateAmt() { amtLabel.textContent = Math.round(amount.value * 100) + '%'; }
+amount.addEventListener('input', () => { state.intensity = +amount.value; updateAmt(); });
+document.querySelectorAll('.wbtn').forEach(b => b.addEventListener('click', () => { setWeather(b.dataset.w); setStatus(''); }));
+
+function codeInfo(c) {
+  if (c <= 1) return ['sunny', .6, c === 0 ? '맑음' : '대체로 맑음'];
+  if (c <= 3 || c === 45 || c === 48) return ['cloudy', .6, c === 2 ? '구름 조금' : c === 3 ? '흐림' : '안개'];
+  if (c >= 51 && c <= 57) return ['rain', .35, '이슬비'];
+  if (c >= 61 && c <= 67) return ['rain', c === 61 || c === 66 ? .5 : c === 63 ? .75 : 1, '비'];
+  if (c >= 71 && c <= 77) return ['snow', c === 71 ? .4 : c === 73 ? .7 : 1, '눈'];
+  if (c >= 80 && c <= 82) return ['rain', [.5, .8, 1][c - 80], '소나기'];
+  if (c === 85 || c === 86) return ['snow', c === 85 ? .6 : 1, '눈 소나기'];
+  if (c >= 95) return ['rain', 1, '뇌우'];
+  return ['cloudy', .5, '흐림'];
+}
+const goBtn = $('#goBtn');
+$('#cityForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const q = $('#city').value.trim();
+  if (!q) { setStatus('도시 이름을 입력해 주세요.'); return; }
+  goBtn.disabled = true; setStatus('"' + q + '"의 날씨를 찾고 있어요...');
+  try {
+    const gRes = await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=ko&format=json&name=' + encodeURIComponent(q));
+    if (!gRes.ok) throw new Error('geo');
+    const g = await gRes.json();
+    if (!g.results || !g.results.length) { setStatus('"' + q + '"을(를) 찾지 못했어요. 영어 이름(예: Seoul)으로도 해 보세요.'); return; }
+    const p = g.results[0];
+    const wRes = await fetch('https://api.open-meteo.com/v1/forecast?current=temperature_2m,weather_code&timezone=auto&latitude=' + p.latitude + '&longitude=' + p.longitude);
+    if (!wRes.ok) throw new Error('wx');
+    const w = await wRes.json();
+    const info = codeInfo(w.current.weather_code);
+    setWeather(info[0], { intensity: info[1], source: 'live' });
+    const temp = Math.round(w.current.temperature_2m);
+    state.liveLabel = p.name + (p.country ? ', ' + p.country : '') + ' · ' + temp + '°C · ' + info[2];
+    setSeason(seasonFor(new Date().getMonth(), p.latitude < 0));
+    setStatus('실제 날씨를 반영했어요. 버튼을 누르면 다시 직접 조작할 수 있어요.');
+  } catch (err) {
+    setStatus('실제 날씨를 불러오지 못했어요. 미리보기 탭에서는 외부 연결이 막혀 있어요. index.html 파일을 브라우저에서 직접 열면 작동해요.');
+  } finally { goBtn.disabled = false; }
+});
+
+/* ---------- speech bubbles ---------- */
+const LINES = {
+  kid:     { sunny: ['햇살 최고!', '오늘은 소풍 가는 날!'], cloudy: ['구름이 잔뜩이네', '비가 오려나?'], rain: ['우산 챙기길 잘했다!', '첨벙첨벙 물웅덩이!'], snow: ['눈사람 만들자!', '손이 꽁꽁 얼었어'] },
+  cat:     { sunny: ['냐아~ 따뜻해', '골골골...'], cloudy: ['냐?', '낮잠 자기 좋은 날'], rain: ['냐앙! 젖기 싫어', '우산 속이 최고야'], snow: ['차가워 냐!', '발이 시려...'] },
+  bunny:   { sunny: ['깡총깡총!', '당근 어디 있지?'], cloudy: ['깡총?', '바람 냄새가 나'], rain: ['귀가 축축해..', '얼른 들어가자!'], snow: ['눈밭은 폭신해!', '깡총! 발자국!'] },
+  duck:    { sunny: ['꽥!', '물이 반짝반짝'], cloudy: ['꽥꽥'], rain: ['꽥! 비 좋아!', '최고의 날씨야!'], snow: ['꽥... 연못이 차가워'] },
+  snowman: { sunny: ['녹고 있어...'], cloudy: ['조금만 더 있을래'], rain: ['으앗, 녹는다!'], snow: ['안녕! 나는 눈사람이야', '당근 코 멋지지?'] },
+  house:   { sunny: ['창문 활짝!'], cloudy: ['안은 포근해'], rain: ['빗소리가 좋아'], snow: ['벽난로를 켜 두었어'] }
+};
+const TREE_LINES = {
+  cherry: { spring: ['벚꽃비가 내려요~', '꽃잎이 팔랑팔랑'], summer: ['초록 잎이 시원해'], autumn: ['노랗게 물들었어'], winter: ['눈 모자를 썼어'] },
+  maple: { spring: ['새잎이 돋았어'], summer: ['그늘이 시원해'], autumn: ['알록달록 단풍!', '낙엽 선물이야'], winter: ['눈 덮인 단풍이야'] }
+};
+const KID_SEASON = { spring: ['벚꽃 너무 예쁘다!'], summer: ['초록초록 여름이다!'], autumn: ['단풍이 알록달록해!'], winter: ['눈 덮인 단풍 봤어?'] };
+const bubble = $('#bubble');
+let bubbleTarget = null, bubbleT = 0;
+function say(obj) {
+  const kind = obj.userData.kind;
+  let set = LINES[kind][state.kind] || LINES[kind].sunny;
+  if (kind === 'cat' && obj.userData.mode === 'nap') { set = ['냥? 깨웠어?', '하암... 잘 잤다']; obj.userData.mode = 'sit'; obj.userData.timer = 2.5; }
+  else if (kind === 'cat' && obj.userData.mode === 'chase') set = ['나비 잡을 거야!', '거의 다 왔어!'];
+  else if (kind === 'cat' && obj.userData.mode === 'petal') set = state.season === 'autumn' ? ['낙엽 잡았다 냥!', '빙글빙글 떨어진다!'] : ['꽃잎 잡을 거야 냥!', '분홍 꽃잎이다!'];
+  else if (kind === 'cat' && obj.userData.mode === 'roll') set = ['낙엽 바스락바스락 냥~', '푹신푹신해!'];
+  if (obj.userData.tree) set = TREE_LINES[kind][state.season];
+  if (kind === 'kid' && Math.random() < .5) set = KID_SEASON[state.season];
+  if (obj.userData.tree) { obj.userData.shake = 1; for (let n = 0; n < 16; n++) spawnFall(obj); }
+  bubble.textContent = set[Math.floor(Math.random() * set.length)];
+  bubbleTarget = obj; bubbleT = 2.6; bubble.classList.add('show');
+  if (obj.userData.jumpV !== undefined && obj.userData.jumpY < .01) obj.userData.jumpV = kind === 'snowman' ? 0 : 4.2;
+  if (kind === 'snowman') obj.userData.wobble = 1;
+}
+
+/* ---------- camera control ---------- */
+const HOME = new THREE.Vector3(0, -0.3, 0);
+const target = HOME.clone();
+const cam = { theta: .35, phi: 1.07, r: 34, tTheta: .35, tPhi: 1.07, tR: 34, zoom: 1 };
+let lastInteract = -10, hintGone = false;
+const pointers = new Map(); let pinch0 = 0, zoom0 = 1, down = null;
+function hideHint() { if (!hintGone) { hintGone = true; $('#hint').classList.add('gone'); } }
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  down = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 };
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = cam.zoom; }
+  canvas.classList.add('dragging');
+});
+canvas.addEventListener('pointermove', e => {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (down) down.moved += Math.abs(dx) + Math.abs(dy);
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch0 > 0) cam.zoom = Math.min(1.5, Math.max(.6, zoom0 * pinch0 / d));
+  } else {
+    cam.tTheta -= dx * .008; cam.tPhi = Math.min(1.38, Math.max(.5, cam.tPhi - dy * .006));
+  }
+  lastInteract = clock.elapsedTime; hideHint();
+});
+function endPointer(e) {
+  if (pointers.has(e.pointerId) && pointers.size === 1 && down && down.moved < 8 && performance.now() - down.t < 450) pick(e.clientX, e.clientY);
+  pointers.delete(e.pointerId); if (pointers.size < 2) pinch0 = 0;
+  if (!pointers.size) canvas.classList.remove('dragging');
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', e => { pointers.delete(e.pointerId); canvas.classList.remove('dragging'); });
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.zoom = Math.min(1.5, Math.max(.6, cam.zoom * (1 + Math.sign(e.deltaY) * .08))); lastInteract = clock.elapsedTime; hideHint(); }, { passive: false });
+canvas.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') cam.tTheta += .15; else if (e.key === 'ArrowRight') cam.tTheta -= .15;
+  else if (e.key === 'ArrowUp') cam.tPhi = Math.max(.5, cam.tPhi - .08); else if (e.key === 'ArrowDown') cam.tPhi = Math.min(1.38, cam.tPhi + .08);
+  else return;
+  lastInteract = clock.elapsedTime; e.preventDefault();
+});
+
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+const clickables = [kid, cat, bunny, duck, snowman, house].concat(seasonTrees);
+function pick(x, y) {
+  const r = canvas.getBoundingClientRect();
+  ndc.set((x - r.left) / r.width * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(clickables, true);
+  for (const h of hits) {
+    let o = h.object;
+    while (o && !clickables.includes(o)) o = o.parent;
+    if (o && o.scale.x > .3) { say(o); hideHint(); return; }
+  }
+}
+
+// fit the whole island (clouds to rock tip) into the space the panels leave free
+const dockEl = document.querySelector('.dock-inner'), badgeEl = document.querySelector('.badge');
+const sideMQ = window.matchMedia('(min-width: 820px)');
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  const tabR = document.getElementById('moreBtn').getBoundingClientRect();
+  const d0 = dockEl.getBoundingClientRect(), d = { top: tabR.height ? Math.min(d0.top, tabR.top) : d0.top, width: d0.width }, top = badgeEl.getBoundingClientRect().bottom;
+  let availW = w, availH = h, offX = 0, offY = 0;
+  if (sideMQ.matches) { availW = w - d.width - 32; availH = h - 40; offX = (d.width + 16) / 2; }
+  else { availW = w; availH = Math.max(160, d.top - top - 16); offY = (h - d.top - top) / 2; }
+  camera.setViewOffset(w, h, offX, offY, w, h);
+  camera.updateProjectionMatrix();
+  const tan = Math.tan(THREE.MathUtils.degToRad(15));
+  const needH = Math.max(18.5 * h / availH, 17.5 * h / availW);
+  cam.tR = Math.max(28, needH / (2 * tan));
+}
+window.addEventListener('resize', resize);
+if (window.ResizeObserver) new ResizeObserver(resize).observe(dockEl);
+resize(); cam.r = cam.tR;
+
+/* ---------- animation ---------- */
+const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const clock = new THREE.Clock();
+const tmpV = new THREE.Vector3();
+let blinkT = 2;
+const kidRest = new THREE.Vector3(0, 0, 1.4);
+const catDry = new THREE.Vector3(-1.8, 0, 2.3), catWet = new THREE.Vector3(-.75, 0, 2.05);
+const tmpV2 = new THREE.Vector3();
+const zzz = $('#zzz');
+// places the cat should not walk into: pond, house, trees, snowman, kid
+const obstacles = [[4.6, .6, 2.5], [1.4, -5.2, 2.6], [-5.3, -3.3, 1.6], [6.3, -3.4, 1.4], [-6.9, .6, 1.4], [-3.2, -6.3, 1.3], [5.2, 4.9, 1.1], [-4.1, -.9, 1.1], [0, 1.4, 1.0], [-5.7, 5.0, 1.1]];
+const isFree = (x, z) => Math.hypot(x, z) < 6.6 && obstacles.every(([ox, oz, or]) => Math.hypot(x - ox, z - oz) > or);
+function freeSpot() {
+  for (let n = 0; n < 40; n++) { const a = Math.random() * Math.PI * 2, r = 1.5 + Math.random() * 4.8, x = Math.cos(a) * r, z = Math.sin(a) * r; if (isFree(x, z)) return new THREE.Vector3(x, 0, z); }
+  return catDry.clone();
+}
+function spotNear(p, d) {
+  for (let n = 0; n < 12; n++) { const a = Math.random() * Math.PI * 2, x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d; if (isFree(x, z)) return new THREE.Vector3(x, 0, z); }
+  return p.clone();
+}
+const CAT_MODES = { sunny: ['wander', 'chase', 'chase', 'groom', 'sit'], cloudy: ['nap', 'nap', 'wander', 'groom'], snow: ['pounce', 'pounce', 'wander', 'sit'], rain: ['shelter'] };
+function catThink() {
+  const cu = cat.userData, list = CAT_MODES[state.kind].slice();
+  const outside = state.kind === 'sunny' || state.kind === 'cloudy';
+  if (outside && (state.season === 'spring' || state.season === 'autumn')) list.push('petal', 'petal');
+  if (outside && state.season === 'autumn') list.push('roll');
+  const m = state.catMode !== 'auto' ? state.catMode : list[Math.floor(Math.random() * list.length)];
+  cu.mode = m; cu.target = null;
+  cu.timer = { wander: 9, chase: 7, nap: 9 + Math.random() * 5, groom: 3.5, pounce: 6, shelter: 1, petal: 7, roll: 8 }[m] || 2 + Math.random() * 2;
+  if (m === 'wander') cu.target = freeSpot();
+  if (m === 'pounce') cu.next = 0;
+  if (m === 'roll') { const mp = seasonTrees[0].position, k = 1.9 / Math.hypot(mp.x, mp.z); cu.target = new THREE.Vector3(mp.x - mp.x * k, 0, mp.z - mp.z * k); }
+}
+function angLerp(a, b, k) { const d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * k; }
+function lerp(a, b, k) { return a + (b - a) * k; }
+function pop(obj, v) { const s = Math.max(.001, v); obj.scale.setScalar(s); obj.visible = v > .01; }
+function hop(o, dt) { const u = o.userData; if (u.jumpV || u.jumpY > 0) { u.jumpV -= 14 * dt; u.jumpY = Math.max(0, u.jumpY + u.jumpV * dt); if (u.jumpY === 0 && u.jumpV < 0) u.jumpV = 0; } return u.jumpY; }
+
+function tick() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  const tw = W[state.kind], k = 1 - Math.exp(-dt * 1.6);
+
+  // blend weather values
+  cur.sky.lerp(tw.skyC, k); cur.light.lerp(tw.lightC, k); cur.cloudC.lerp(tw.cloudC, k);
+  ['hemi', 'sunI', 'clouds', 'sunVis', 'fauna', 'dark', 'wind'].forEach(p => { cur[p] = lerp(cur[p], tw[p], k); });
+  cur.rain = lerp(cur.rain, tw.rain * state.intensity, k);
+  cur.snow = lerp(cur.snow, tw.snow * state.intensity, k);
+  const snowing = state.kind === 'snow';
+  cur.snowCover = snowing ? Math.min(1, cur.snowCover + dt * .12 * (.4 + state.intensity)) : Math.max(0, cur.snowCover - dt * .18);
+  cur.wet = state.kind === 'rain' ? Math.min(1, cur.wet + dt * .35) : Math.max(0, cur.wet - dt * .15);
+  cur.umbrella = lerp(cur.umbrella, state.kind === 'rain' ? 1 : 0, 1 - Math.exp(-dt * 5));
+  cur.winter = lerp(cur.winter, snowing ? 1 : 0, 1 - Math.exp(-dt * 5));
+  cur.sunhat = lerp(cur.sunhat, state.kind === 'sunny' ? 1 : 0, 1 - Math.exp(-dt * 5));
+
+  scene.background.copy(cur.sky); scene.fog.color.copy(cur.sky);
+  const sp = state.sunPower; hemi.intensity = cur.hemi * (.75 + sp * .25); sunLight.intensity = cur.sunI * sp; sunLight.color.copy(cur.light);
+  cloudMat.color.copy(cur.cloudC);
+  windowMat.emissiveIntensity = cur.dark * .9;
+  const kS = 1 - Math.exp(-dt * 1.2);
+  seasonals.forEach(se => se.entry.base.lerp(se.target[state.season], kS));
+  snowables.forEach(s => s.m.color.copy(s.base).lerp(WHITE, cur.snowCover * s.k));
+  // petals and leaves
+  const windy = 1 + cur.wind * 2 + cur.rain * 2;
+  seasonTrees.forEach(tr => {
+    const u = tr.userData; if (!u.fallColors[state.season]) return;
+    u.acc += dt * .8 * windy * (1 - cur.snowCover);
+    while (u.acc > 1) { u.acc -= 1; spawnFall(tr); }
+  });
+  falls.forEach(f => {
+    if (!f.active) return;
+    const fp = f.m.position;
+    if (!f.landed) {
+      fp.y += f.vy * dt; fp.x += (Math.sin(t * 2 + f.ph) * .5 + cur.wind * .7) * dt; fp.z += Math.cos(t * 1.7 + f.ph) * .4 * dt;
+      f.m.rotation.x += f.spin * dt; f.m.rotation.y += f.spin * .7 * dt;
+      if (fp.x * fp.x + fp.z * fp.z < 77 && fp.y <= .05) { f.landed = true; fp.y = .05 + Math.random() * .015; f.m.rotation.set(-Math.PI / 2, 0, Math.random() * 6); }
+      else if (fp.y < -7) { f.active = false; f.m.visible = false; }
+    } else {
+      const inPond = Math.hypot(fp.x - pondPos.x, fp.z - pondPos.z) < 1.8;
+      if (f.season !== state.season || cur.snowCover > .5 || inPond) {
+        const sc = f.m.scale.x - dt * 1.2;
+        if (sc <= .02) { f.active = false; f.m.visible = false; } else f.m.scale.setScalar(sc);
+      }
+    }
+  });
+  pondMat.color.copy(pondBase).lerp(pondIce, cur.snowCover * .8);
+  puddles.forEach((p, i) => { const s = Math.max(.001, Math.min(1, cur.wet * 1.4 - i * .1)); p.scale.set(s, 1, s); p.visible = s > .01; });
+  pop(sun, cur.sunVis * (.7 + sp * .3)); sun.rotation.y = t * .2; sunGlow.scale.setScalar((1 + Math.sin(t * 2) * .05) * (.8 + sp * .35));
+
+  // clouds
+  cloudRing.rotation.y = cam.theta; // clouds stay in the sky behind the island
+  clouds.forEach((c, i) => {
+    const want = (i + .5) / clouds.length <= cur.clouds + .02 ? c.userData.s : 0;
+    const s = lerp(c.scale.x, want, 1 - Math.exp(-dt * 2)); pop(c, s);
+    c.position.y += Math.sin(t * .5 + i) * .002;
+    if (!reduced) c.position.x = c.userData.x0 + Math.sin(t * (.08 + cur.wind * .1) + i * 1.7) * 1.2;
+  });
+
+  // rain
+  const rainCount = Math.floor(RAIN_N * Math.min(1, cur.rain));
+  const slant = .12 + cur.wind * .1;
+  for (let i = 0; i < rainCount; i++) {
+    const d = rainSeed[i]; d.y -= d.v * dt;
+    const floor = (d.x * d.x + d.z * d.z < 81) ? 0 : -7;
+    if (d.y < floor) { d.y = TOPY + Math.random() * 2; d.x = (Math.random() * 2 - 1) * AREA; d.z = (Math.random() * 2 - 1) * AREA; }
+    const o = i * 6;
+    rainPos[o] = d.x; rainPos[o + 1] = d.y; rainPos[o + 2] = d.z;
+    rainPos[o + 3] = d.x + slant; rainPos[o + 4] = d.y + .55; rainPos[o + 5] = d.z;
+  }
+  rainGeo.setDrawRange(0, rainCount * 2); rainGeo.attributes.position.needsUpdate = true; rain.visible = rainCount > 0;
+
+  // snow
+  const snowCount = Math.floor(SNOW_N * Math.min(1, cur.snow));
+  for (let i = 0; i < snowCount; i++) {
+    const d = snowSeed[i]; d.y -= d.v * dt;
+    const floor = (d.x * d.x + d.z * d.z < 81) ? 0 : -7;
+    if (d.y < floor) { d.y = TOPY + Math.random() * 2; d.x = (Math.random() * 2 - 1) * AREA; d.z = (Math.random() * 2 - 1) * AREA; }
+    const o = i * 3;
+    snowPos[o] = d.x + Math.sin(t * .8 + d.p) * .4; snowPos[o + 1] = d.y; snowPos[o + 2] = d.z + Math.cos(t * .6 + d.p) * .4;
+  }
+  snowGeo.setDrawRange(0, snowCount); snowGeo.attributes.position.needsUpdate = true; snow.visible = snowCount > 0;
+
+  // kid
+  const ku = kid.userData;
+  kid.position.y = hop(kid, dt);
+  ku.body.position.y = Math.sin(t * 2.2) * .035;
+  ku.head.rotation.z = Math.sin(t * 1.3) * .06;
+  ku.head.rotation.y = Math.sin(t * .7) * .15;
+  blinkT -= dt; const blink = blinkT < .12; if (blinkT < 0) blinkT = 2 + Math.random() * 3;
+  ku.eyes.forEach(e => e.scale.y = blink ? .12 : 1);
+  pop(ku.umbrella, cur.umbrella); ku.umbrella.rotation.z = .18 + Math.sin(t * 1.5) * .04;
+  pop(ku.hat, cur.winter); pop(ku.scarf, cur.winter); pop(ku.sunhat, cur.sunhat * (1 - cur.winter));
+  ku.armR.rotation.z = lerp(.25, 2.55, cur.umbrella) + Math.sin(t * 2) * .05 * (1 - cur.umbrella);
+  ku.armL.rotation.z = -.25 - Math.sin(t * 2 + 1) * .08 - (ku.jumpY > 0 ? .9 : 0);
+  if (ku.jumpY > 0) ku.armR.rotation.z = Math.max(ku.armR.rotation.z, 1.2);
+
+  // cat: picks something to do based on the weather
+  const cu = cat.userData;
+  cu.timer -= dt; cu.cool -= dt;
+  if (cu.weather !== state.kind) { cu.weather = state.kind; catThink(); }
+  else if (cu.timer <= 0) catThink();
+  let goal = null, speed = 1.3;
+  if (cu.mode === 'shelter') { goal = catWet; speed = 2.6; cu.timer = 1; }
+  else if (cu.mode === 'wander') goal = cu.target;
+  else if (cu.mode === 'chase') {
+    const b = butterflies[0];
+    if (b.visible) {
+      goal = tmpV2.set(b.position.x, 0, b.position.z); speed = 2.1;
+      if (Math.hypot(goal.x - cat.position.x, goal.z - cat.position.z) < 1 && cu.jumpY < .01 && cu.cool <= 0) { cu.jumpV = 4.8; cu.cool = 1.5; }
+    } else cu.timer = 0;
+  } else if (cu.mode === 'petal') {
+    let best = null, bd = 1e9;
+    falls.forEach(f => { if (f.active && !f.landed && f.m.position.y < 3) { const d = Math.hypot(f.m.position.x - cat.position.x, f.m.position.z - cat.position.z); if (d < bd && isFree(f.m.position.x, f.m.position.z)) { bd = d; best = f; } } });
+    if (best) {
+      goal = tmpV2.set(best.m.position.x, 0, best.m.position.z); speed = 2.2;
+      if (bd < .8 && best.m.position.y < 1.6 && cu.jumpY < .01 && cu.cool <= 0) { cu.jumpV = 4.4; cu.cool = 1.2; }
+    }
+  } else if (cu.mode === 'roll') {
+    goal = cu.target; speed = 1.6;
+  } else if (cu.mode === 'pounce') {
+    cu.next -= dt;
+    if (cu.next <= 0 && cu.jumpY < .01) { cu.target = spotNear(cat.position, 1.3); cu.jumpV = 4.2; cu.next = 1.2 + Math.random() * .6; }
+    if (cu.jumpY > 0) { goal = cu.target; speed = 2.4; }
+  }
+  let moving = false;
+  if (goal) {
+    const dx = goal.x - cat.position.x, dz = goal.z - cat.position.z, d = Math.hypot(dx, dz);
+    if (d > .12) {
+      const st = Math.min(d, speed * dt);
+      cat.position.x += dx / d * st; cat.position.z += dz / d * st; moving = true;
+      cat.rotation.y = angLerp(cat.rotation.y, Math.atan2(dx, dz), 1 - Math.exp(-dt * 8));
+    } else if (cu.mode === 'wander') { if (state.catMode === 'wander') cu.target = freeSpot(); else { cu.mode = 'sit'; cu.timer = 2 + Math.random() * 2; } }
+  }
+  if (cu.mode === 'shelter' && !moving) cat.rotation.y = angLerp(cat.rotation.y, .5, 1 - Math.exp(-dt * 3));
+  cu.nap = lerp(cu.nap, cu.mode === 'nap' ? 1 : 0, 1 - Math.exp(-dt * 3));
+  const walkBob = moving && cu.jumpY <= 0 ? Math.abs(Math.sin(t * 12)) * .06 : 0;
+  cat.position.y = hop(cat, dt) + walkBob;
+  cat.scale.set(1 + cu.nap * .12, 1 - cu.nap * .3, 1 + cu.nap * .12);
+  const grooming = cu.mode === 'groom';
+  cu.head.rotation.x = cu.nap * .5 + (grooming ? .35 + Math.sin(t * 8) * .12 : 0);
+  cu.head.rotation.y = (cu.mode === 'chase' || moving) ? 0 : Math.sin(t * .9) * .3 * (1 - cu.nap);
+  cu.head.rotation.z = Math.sin(t * .5) * .1;
+  const rolling = cu.mode === 'roll' && !moving;
+  cat.rotation.z = rolling ? Math.sin(t * 4) * 1.2 : lerp(cat.rotation.z, 0, 1 - Math.exp(-dt * 6));
+  if (rolling && Math.random() < dt * 3 && state.season === 'autumn') spawnFall(seasonTrees[0]);
+  cu.paws.forEach((pw, i) => {
+    const lift = grooming && i === 1 ? .3 : 0;
+    pw.position.y = lerp(pw.position.y, .08 + lift, 1 - Math.exp(-dt * 8));
+    pw.position.z = .36 + (moving ? Math.sin(t * 12 + i * Math.PI) * .09 : 0) + (grooming && i === 1 ? .08 : 0);
+  });
+  const catBlink = blinkT > 0 && blinkT < .14;
+  cu.eyes.forEach(e => { e.scale.y = cu.nap > .5 ? .15 : grooming ? .5 : catBlink ? .2 : 1.4; });
+  const excited = cu.mode === 'chase' || cu.mode === 'pounce' ? 2.2 : 1;
+  cu.segs.forEach((s, i) => { s.rotation.z = Math.sin(t * 2.2 * excited - i * .6) * (.25 + cur.wind * .1) * (1 - cu.nap * .7); });
+  // sleepy z's above a napping cat
+  if (cu.nap > .7) {
+    cu.head.getWorldPosition(tmpV2); tmpV2.y += .5; tmpV2.project(camera);
+    const rc = canvas.getBoundingClientRect();
+    zzz.style.transform = 'translate(' + ((tmpV2.x * .5 + .5) * rc.width + 6) + 'px,' + ((-tmpV2.y * .5 + .5) * rc.height - 30) + 'px)';
+    zzz.classList.add('show');
+  } else zzz.classList.remove('show');
+
+  // bunny hops on a loop, slower in bad weather
+  bunny.userData.a = (bunny.userData.a || 0) + dt * (.32 - cur.snow * .12 - cur.rain * .08);
+  const ba = bunny.userData.a, bcx = -.6, bcz = -.4, brx = 3.7, brz = 2.7;
+  const bx = bcx + Math.cos(ba) * brx, bz = bcz + Math.sin(ba) * brz;
+  bunny.position.set(bx, Math.abs(Math.sin(ba * 9)) * .4 + hop(bunny, dt), bz);
+  bunny.rotation.y = Math.atan2(-Math.sin(ba) * brx, Math.cos(ba) * brz);
+
+  // duck paddles around the pond
+  const da = t * .35;
+  duck.position.set(pondPos.x + Math.cos(da) * .85, .06 + Math.sin(t * 3) * .03 + hop(duck, dt), pondPos.z + Math.sin(da) * .85);
+  duck.rotation.y = Math.atan2(-Math.sin(da), Math.cos(da));
+  duck.rotation.z = Math.sin(t * 2.5) * .06;
+
+  // snowman
+  const sm = snowman.userData;
+  const smS = lerp(snowman.scale.x, cur.snowCover > .35 ? 1 : 0, 1 - Math.exp(-dt * 2.5));
+  pop(snowman, smS);
+  if (sm.wobble) { sm.wobble = Math.max(0, sm.wobble - dt * 1.2); }
+  snowman.rotation.z = Math.sin(t * 14) * .08 * (sm.wobble || 0);
+
+  // bird + butterflies
+  const ba2 = t * .45;
+  pop(bird, cur.fauna);
+  bird.position.set(Math.cos(ba2) * 7, 5.5 + Math.sin(t * 1.3) * .5, Math.sin(ba2) * 7);
+  bird.rotation.y = -ba2;
+  wings[0].rotation.z = Math.sin(t * 14) * .7; wings[1].rotation.z = -Math.sin(t * 14) * .7;
+  butterflies.forEach((b, i) => {
+    const u = b.userData, a = t * .6 + u.ph;
+    cur.bfly = lerp(cur.bfly || 1, state.kind === 'sunny' || cu.mode === 'chase' ? 1 : 0, 1 - Math.exp(-dt * 2));
+    pop(b, cur.bfly);
+    b.position.set(bedCenter.x + Math.cos(a) * (1 + i * .3), 1 + Math.sin(t * 1.7 + u.ph) * .35, bedCenter.z + Math.sin(a * 1.3) * (.9 + i * .2));
+    b.rotation.y = -a;
+    const f = Math.sin(t * 18 + u.ph) * .9; u.wl[0].rotation.z = f; u.wl[1].rotation.z = -f;
+  });
+
+  // flowers + trees sway
+  flowers.forEach(f => { f.rotation.z = Math.sin(t * 1.6 + f.userData.ph) * (.05 + cur.wind * .1); });
+  trees.forEach((tr, i) => {
+    const u = tr.userData; if (u.shake) u.shake = Math.max(0, u.shake - dt * 1.5);
+    tr.rotation.z = Math.sin(t * 1.1 + i) * (.01 + cur.wind * .025) + Math.sin(t * 28) * .07 * (u.shake || 0);
+  });
+  world.children.forEach(o => { if (o.userData.float !== undefined) o.position.y += Math.sin(t + o.userData.float) * .003; });
+
+  // camera
+  if (!reduced && t - lastInteract > 5) cam.tTheta += dt * .05;
+  cam.theta = lerp(cam.theta, cam.tTheta, 1 - Math.exp(-dt * 6));
+  cam.phi = lerp(cam.phi, cam.tPhi, 1 - Math.exp(-dt * 6));
+  if (cam.focus) { cat.getWorldPosition(tmpV2); tmpV2.y += .7; } else tmpV2.copy(HOME);
+  target.lerp(tmpV2, 1 - Math.exp(-dt * 4));
+  cam.fz = lerp(cam.fz || 1, cam.focus ? .4 : 1, 1 - Math.exp(-dt * 3));
+  cam.r = lerp(cam.r, cam.tR * cam.zoom * cam.fz, 1 - Math.exp(-dt * 6));
+  camera.position.set(target.x + cam.r * Math.sin(cam.phi) * Math.sin(cam.theta), target.y + cam.r * Math.cos(cam.phi), target.z + cam.r * Math.sin(cam.phi) * Math.cos(cam.theta));
+  camera.lookAt(target);
+
+  renderer.render(scene, camera);
+
+  // bubble follows its speaker
+  if (bubbleTarget) {
+    bubbleT -= dt;
+    bubbleTarget.getWorldPosition(tmpV); tmpV.y += bubbleTarget.userData.h * bubbleTarget.scale.x;
+    tmpV.project(camera);
+    const r = canvas.getBoundingClientRect();
+    const x = (tmpV.x * .5 + .5) * r.width, y = (-tmpV.y * .5 + .5) * r.height;
+    bubble.style.transform = 'translate(' + (x - bubble.offsetWidth / 2) + 'px,' + (y - bubble.offsetHeight - 12) + 'px)';
+    if (bubbleT <= 0) { bubble.classList.remove('show'); bubbleTarget = null; }
+  }
+  requestAnimationFrame(tick);
+}
+updateAmt();
+requestAnimationFrame(tick);
+})();
+</script>
